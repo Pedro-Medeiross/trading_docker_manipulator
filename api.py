@@ -10,7 +10,7 @@ async def get_status_bot(user_id: int):
         headers = {'Authorization': auth.encode()}
         async with session.get(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', headers=headers) as response:
             r = await response.json()
-            status = r['status']
+            status = r['bot_status']
             return status
         
 
@@ -29,7 +29,7 @@ async def update_status_bot(user_id: int, status: str):
     async with aiohttp.ClientSession() as session:
         auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
         headers = {'Authorization': auth.encode()}
-        data = {'status': status}
+        data = {'bot_status': status}
         async with session.put(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', json=data, headers=headers) as response:
             if response.status == 200:
                 return True
