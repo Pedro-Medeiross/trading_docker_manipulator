@@ -53,7 +53,7 @@ else:
 
 
 @app.get("/start/{user_id}")
-async def start_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     api_key = await api.get_api_key(user_id)
@@ -63,7 +63,7 @@ async def start_container(user_id: int, username: str = Depends(get_basic_creden
 
 
     if api_key is None:
-        return {'message': 'email e senha da corretora não cadastrados'}
+        return {'message': 'api_key da corretora não cadastrada!'}
     
     containers = client.containers.list(all=True)
 
@@ -72,7 +72,8 @@ async def start_container(user_id: int, username: str = Depends(get_basic_creden
         'API_TOKEN': api_key,
         'TOKEN_TELEGRAN': TOKEN_TELEGRAN,
         'API_USER': API_USER,
-        'API_PASS': API_PASS
+        'API_PASS': API_PASS,
+        'BROKERAGE_ID': 1
     }
 
     for container in containers:
@@ -92,7 +93,7 @@ async def start_container(user_id: int, username: str = Depends(get_basic_creden
 
 
 @app.get("/stop/{user_id}")
-async def stop_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def stop_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     if status_bot == 0:
@@ -115,7 +116,7 @@ async def stop_container(user_id: int, username: str = Depends(get_basic_credent
 
 
 @app.get("/status/{user_id}")
-async def status_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def status_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     if status_bot == 0:
@@ -135,7 +136,7 @@ async def status_container(user_id: int, username: str = Depends(get_basic_crede
 
 
 @app.get("/stop_loss/{user_id}")
-async def stop_loss_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def stop_loss_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     if status_bot == 0:
@@ -157,7 +158,7 @@ async def stop_loss_container(user_id: int, username: str = Depends(get_basic_cr
 
 
 @app.get("/stop_win/{user_id}")
-async def stop_win_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def stop_win_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     if status_bot == 0:
@@ -179,7 +180,7 @@ async def stop_win_container(user_id: int, username: str = Depends(get_basic_cre
 
 
 @app.get("/restart/{user_id}")
-async def restart_container(user_id: int, username: str = Depends(get_basic_credentials)):
+async def restart_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
     if status_bot == 0:
