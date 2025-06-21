@@ -14,7 +14,7 @@ async def get_bot_options(user_id):
             return await response.json()
         
 
-async def create_trade_order_info(user_id, order_id, symbol, order_type, quantity, price, status):
+async def create_trade_order_info(user_id, order_id, symbol, order_type, quantity, price, status, brokerage_id):
     async with aiohttp.ClientSession() as session:
         auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
         headers = {'Authorization': auth.encode()}
@@ -26,7 +26,8 @@ async def create_trade_order_info(user_id, order_id, symbol, order_type, quantit
             'quantity': quantity,
             'price': price,
             'status': status,
-            'date_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            'date_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'brokerage_id': brokerage_id
         }
         async with session.post('http://69.62.92.8/trade-order-info', json=data, headers=headers) as response:
             return await response.json()

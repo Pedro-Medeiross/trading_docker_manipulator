@@ -12,6 +12,7 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN_TELEGRAN")
 API_TOKEN = os.getenv("API_TOKEN")
 USER_ID = os.getenv("USER_ID")
+BROKERAGE_ID = os.getenv("BROKERAGE_ID")
 
 # Envia a ordem de compra e retorna o ID da operação
 def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
@@ -43,7 +44,7 @@ async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amou
 
     await api.create_trade_order_info(user_id=USER_ID, order_id=order_id, symbol=symbol,
                                       order_type=direction, quantity=amount, price=order_price,
-                                      status=order_status)
+                                      status=order_status, brokerage_id=BROKERAGE_ID)
 
     url_status = f"https://broker-api.mybroker.dev/token/trades/{order_id}"
     headers = {"api-token": API_TOKEN}
@@ -73,18 +74,18 @@ async def aguardar_horario(horario: str):
 # Controla a entrada principal e as gales
 async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
                                        isDemo: bool, close_type: str,
-                                       direction: str, symbol: str, amount: float):
-    # Entrada principal
+                                       direction: str, symbol: str, amount: float,
+                                       USER_ID: str):  # <-- adicione USER_ID como argumento
     await aguardar_horario(entrada)
     order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount)
 
-    bot_options = await api.get_bot_options(USER_ID)
+    if not order:
+        print("⚠️ Falha na execução da entrada principal.")
+        return
 
+    bot_options = await api.get_bot_options(USER_ID)
     gale_one = bot_options['gale_one']
     gale_two = bot_options['gale_two']
-
-    if not order:
-        return
 
     result = order.get("result")
     pnl = order.get("pnl")
@@ -92,48 +93,63 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
     if result == "WON":
         print("✅ Entrada principal venceu.")
         await api.update_win_value(USER_ID, pnl)
-        await api.update_trade_order_info(order_id=order.get("id"), user_id=USER_ID, status="WON")
+        await api.update_trade_order_info(order.get("id"), USER_ID, "WON")
+        await api.verify_stop_values(USER_ID)
         return
 
-    # Gale 1
     if result == "LOST" and gale1 and gale_one:
         await api.update_loss_value(USER_ID, amount)
+        await api.verify_stop_values(USER_ID)
+
         await aguardar_horario(gale1)
         gale1_valor = amount * 2
-        order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale1_valor)
+        order_gale1 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale1_valor)
 
-        if not order:
+        if not order_gale1:
+            print("⚠️ Falha na execução da Gale 1.")
             return
 
-        result = order.get("result")
-        pnl = order.get("pnl")
+        result_gale1 = order_gale1.get("result")
+        pnl = order_gale1.get("pnl")
 
-        if result == "WON":
+        if result_gale1 == "WON":
             print("✅ Gale 1 venceu.")
             await api.update_win_value(USER_ID, pnl)
-            await api.update_trade_order_info(order_id=order.get("id"), user_id=USER_ID, status="WON NA GALE 1")
-
-    # Gale 2
-    if result == "LOST" and gale2 and gale_two:
-        await api.update_loss_value(USER_ID, gale1_valor)
-        await aguardar_horario(gale2)
-        gale2_valor = amount * 4
-        order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale2_valor)
-
-        if not order:
+            await api.update_trade_order_info(order_gale1.get("id"), USER_ID, "WON NA GALE 1")
+            await api.verify_stop_values(USER_ID)
             return
 
-        result = order.get("result")
-        pnl = order.get("pnl")
+        if result_gale1 == "LOST" and gale2 and gale_two:
+            await api.update_loss_value(USER_ID, gale1_valor)
+            await api.verify_stop_values(USER_ID)
 
-        if result == "WON":
-            print("✅ Gale 2 venceu.")
-            await api.update_win_value(USER_ID, pnl)
-            await api.update_trade_order_info(order_id=order.get("id"), user_id=USER_ID, status="WON NA GALE 2")
-        elif result == "LOST":
-            print("❌ Gale 2 perdeu.")
-            await api.update_loss_value(USER_ID, gale2_valor)
-            await api.update_trade_order_info(order_id=order.get("id"), user_id=USER_ID, status="LOST")
+            await aguardar_horario(gale2)
+            gale2_valor = amount * 4
+            order_gale2 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale2_valor)
+
+            if not order_gale2:
+                print("⚠️ Falha na execução da Gale 2.")
+                return
+
+            result_gale2 = order_gale2.get("result")
+            pnl = order_gale2.get("pnl")
+
+            if result_gale2 == "WON":
+                print("✅ Gale 2 venceu.")
+                await api.update_win_value(USER_ID, pnl)
+                await api.update_trade_order_info(order_gale2.get("id"), USER_ID, "WON NA GALE 2")
+            else:
+                print("❌ Gale 2 perdeu.")
+                await api.update_loss_value(USER_ID, gale2_valor)
+                await api.update_trade_order_info(order_gale2.get("id"), USER_ID, "LOST")
+
+            await api.verify_stop_values(USER_ID)
+            return
+
+    print("❌ Todas as tentativas falharam.")
+    await api.update_loss_value(USER_ID, amount)
+    await api.update_trade_order_info(order.get("id"), USER_ID, "LOST")
+    await api.verify_stop_values(USER_ID)
 
 # Trata mensagens do grupo
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
