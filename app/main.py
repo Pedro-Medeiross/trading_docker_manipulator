@@ -192,3 +192,5 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_message))
 app.run_polling()
+
+
