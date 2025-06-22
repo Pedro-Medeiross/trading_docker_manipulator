@@ -114,7 +114,7 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
         await api.verify_stop_values(USER_ID)
         return
 
-    if result == "LOST" or result == "DRAW" and gale1 and gale_one:
+    if (result == "LOST" or result == "DRAW") and gale1 and gale_one:
         print("❌ Entrada principal perdeu, iniciando Gale 1...")
         print("atualizando valores de perda...")
         await api.update_loss_value(USER_ID, amount)
@@ -144,7 +144,7 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
             await api.verify_stop_values(USER_ID)
             return
 
-        if result_gale1 == "LOST" or result_gale1 == "DRAW" and gale2 and gale_two:
+        if (result_gale1 == "LOST" or result_gale1 == "DRAW") and gale2 and gale_two:
             print("❌ Gale 1 perdeu, iniciando Gale 2...")
             print("atualizando valores de perda...")
             await api.update_loss_value(USER_ID, gale1_valor)
