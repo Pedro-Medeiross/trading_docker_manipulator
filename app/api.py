@@ -101,15 +101,3 @@ async def verify_stop_values(user_id):
                     headers = {'Authorization': auth.encode()}
                     async with session.get(f'https://bot.multitradingob.com/stop_loss/{user_id}', headers=headers) as response:
                         return await response.json()
-                    
-
-async def reset_stop_values(user_id):
-    win_value = 0
-    loss_value = 0
-
-    async with aiohttp.ClientSession() as session:
-            auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
-            headers = {'Authorization': auth.encode()}
-            data = {'loss_value': loss_value, 'win_value': win_value}
-            async with session.put(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', json=data, headers=headers) as response:
-                return await response.json()

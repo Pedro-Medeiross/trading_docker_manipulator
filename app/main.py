@@ -21,9 +21,6 @@ print(f"API Token: {API_TOKEN}")
 print(f"User ID: {USER_ID}")
 print(f"Brokerage ID: {BROKERAGE_ID}")
 
-print("Resetando stop values :")
-api.reset_stop_values(USER_ID)
-
 # Envia a ordem de compra e retorna o ID da operação
 def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
     url_buy = 'https://broker-api.mybroker.dev/token/trades/open'
