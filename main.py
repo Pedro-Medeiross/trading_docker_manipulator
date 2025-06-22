@@ -66,7 +66,7 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
     print(f'API Key: {api_key}')
 
     print("Resetando stop values :")
-    api.reset_stop_values(user_id)
+    await api.reset_stop_values(user_id)
 
     if api_key is None:
         return {'message': 'api_key da corretora não cadastrada!'}
