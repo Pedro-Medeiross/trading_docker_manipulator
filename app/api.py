@@ -29,7 +29,7 @@ async def create_trade_order_info(user_id: int, order_id: str, symbol: str, orde
             'quantity': quantity,
             'price': price,
             'status': status,
-            'date_time': hora_now.strftime("%Y-%m-%d %H:%M:%S"),
+            'date_time': hora_now.isoformat(),
             'brokerage_id': brokerage_id
         }
         async with session.post('https://api.multitradingob.com/trade-order-info/trade_order_info/create', json=data, headers=headers) as response:
