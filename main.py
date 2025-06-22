@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
 from fastapi import Depends, HTTPException, status
 from dotenv import load_dotenv
+import base64
 
 load_dotenv()
 
@@ -55,25 +56,29 @@ else:
 @app.get("/start/{user_id}")
 async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
-
-    api_key = await api.get_api_key(user_id)
+    BROKERAGE_ID = 1
+    get_api_key = await api.get_api_key(user_id, BROKERAGE_ID)
     TOKEN_TELEGRAN = os.environ.get("TOKEN_TELEGRAN")
     API_USER = os.environ.get("API_USER")
     API_PASS = os.environ.get("API_PASS")
 
+    api_key = get_api_key.get('api_key')
+    print(f'API Key: {api_key}')
 
     if api_key is None:
         return {'message': 'api_key da corretora não cadastrada!'}
+    
+    decoded_api_key = base64.b64decode(api_key).decode('utf-8')
     
     containers = client.containers.list(all=True)
 
     env_vars = {
         'USER_ID': user_id,
-        'API_TOKEN': api_key,
+        'API_TOKEN': decoded_api_key,
         'TOKEN_TELEGRAN': TOKEN_TELEGRAN,
         'API_USER': API_USER,
         'API_PASS': API_PASS,
-        'BROKERAGE_ID': 1
+        'BROKERAGE_ID': BROKERAGE_ID
     }
 
     for container in containers:

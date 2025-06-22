@@ -5,6 +5,7 @@ import os
 import re
 import api
 from datetime import datetime
+import pytz
 import requests
 import asyncio
 
@@ -13,6 +14,15 @@ TOKEN = os.getenv("TOKEN_TELEGRAN")
 API_TOKEN = os.getenv("API_TOKEN")
 USER_ID = os.getenv("USER_ID")
 BROKERAGE_ID = os.getenv("BROKERAGE_ID")
+
+print("🔧 Configurações do Bot:")
+print(f"Token: {TOKEN}")
+print(f"API Token: {API_TOKEN}")
+print(f"User ID: {USER_ID}")
+print(f"Brokerage ID: {BROKERAGE_ID}")
+
+print("Resetando stop values :")
+api.reset_stop_values(USER_ID)
 
 # Envia a ordem de compra e retorna o ID da operação
 def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
@@ -32,7 +42,7 @@ def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, 
     return data
 
 # Executa a ordem e verifica o resultado final
-async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount):
+async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, etapa):
     order = realizar_compra(isDemo, close_type, direction, symbol, amount)
     order_id = order.get("id")
     order_price = order.get("openPrice")
@@ -49,35 +59,42 @@ async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amou
     url_status = f"https://broker-api.mybroker.dev/token/trades/{order_id}"
     headers = {"api-token": API_TOKEN}
 
-    print(f"🔍 Verificando resultado da ordem {order_id}...")
+    print(f"🔍 Verificando resultado da ordem {order_id} para {etapa}...")
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         try:
             response = requests.get(url_status, headers=headers)
             data = response.json()
-            result = data.get("result") # Pode ser "WON", "LOST" ou "PENDING"
+            result = data.get("result") # Pode ser "WON", "LOST", "DRAW" ou "PENDING"
             print(f"📊 Status atual: {result}")
-            if result in ["WON", "LOST"]:
+            if result in ["WON", "LOST", "DRAW"]:
                 return data  # Retorna todos os dados da ordem
         except Exception as e:
             print(f"⚠️ Erro ao verificar status: {e}")
 
 # Espera até o horário desejado
-async def aguardar_horario(horario: str):
-    print(f"⏳ Aguardando horário: {horario}")
+async def aguardar_horario(horario: str, etapa: str):
+    print(f"⏳ Aguardando horário: {horario} para {etapa}")
+    tz_brasilia = pytz.timezone('America/Sao_Paulo')
+    
+    target_time = datetime.strptime(horario, "%H:%M").time()
+
     while True:
-        agora = datetime.now().strftime("%H:%M")
-        if agora == horario:
+        agora = datetime.now(tz_brasilia).time()
+        print(f"🕒 Horário atual: {agora.strftime('%H:%M:%S')} para {etapa}")
+
+        if agora >= target_time:
+            print("🚀 Horário atingido, prosseguindo...")
             return
+
         await asyncio.sleep(5)
 
 # Controla a entrada principal e as gales
 async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
                                        isDemo: bool, close_type: str,
-                                       direction: str, symbol: str, amount: float,
-                                       USER_ID: str):  # <-- adicione USER_ID como argumento
-    await aguardar_horario(entrada)
-    order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount)
+                                       direction: str, symbol: str, amount: float):  # <-- adicione USER_ID como argumento
+    await aguardar_horario(entrada, etapa="Entrada Principal")
+    order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, etapa="Entrada Principal")
 
     if not order:
         print("⚠️ Falha na execução da entrada principal.")
@@ -92,18 +109,26 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
 
     if result == "WON":
         print("✅ Entrada principal venceu.")
+        print("atualizando valores de ganho...")
         await api.update_win_value(USER_ID, pnl)
+        print("atualizando ordem...")
         await api.update_trade_order_info(order.get("id"), USER_ID, "WON")
+        print("verificando valores de stop...")
         await api.verify_stop_values(USER_ID)
         return
 
-    if result == "LOST" and gale1 and gale_one:
+    if result == "LOST" or result == "DRAW" and gale1 and gale_one:
+        print("❌ Entrada principal perdeu, iniciando Gale 1...")
+        print("atualizando valores de perda...")
         await api.update_loss_value(USER_ID, amount)
+        print("atualizando ordem...")
+        await api.update_trade_order_info(order.get("id"), USER_ID, "LOST")
+        print("verificando valores de stop...")
         await api.verify_stop_values(USER_ID)
 
-        await aguardar_horario(gale1)
+        await aguardar_horario(gale1, etapa="Gale 1")
         gale1_valor = amount * 2
-        order_gale1 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale1_valor)
+        order_gale1 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale1_valor, etapa="Gale 1")
 
         if not order_gale1:
             print("⚠️ Falha na execução da Gale 1.")
@@ -114,18 +139,26 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
 
         if result_gale1 == "WON":
             print("✅ Gale 1 venceu.")
+            print("atualizando valores de ganho...")
             await api.update_win_value(USER_ID, pnl)
+            print("atualizando ordem...")
             await api.update_trade_order_info(order_gale1.get("id"), USER_ID, "WON NA GALE 1")
+            print("verificando valores de stop...")
             await api.verify_stop_values(USER_ID)
             return
 
-        if result_gale1 == "LOST" and gale2 and gale_two:
+        if result_gale1 == "LOST" or result_gale1 == "DRAW" and gale2 and gale_two:
+            print("❌ Gale 1 perdeu, iniciando Gale 2...")
+            print("atualizando valores de perda...")
             await api.update_loss_value(USER_ID, gale1_valor)
+            print("atualizando ordem...")
+            await api.update_trade_order_info(order_gale1.get("id"), USER_ID, "LOST")
+            print("verificando valores de stop...")
             await api.verify_stop_values(USER_ID)
 
-            await aguardar_horario(gale2)
+            await aguardar_horario(gale2, etapa="Gale 2")
             gale2_valor = amount * 4
-            order_gale2 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale2_valor)
+            order_gale2 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale2_valor, etapa="Gale 2")
 
             if not order_gale2:
                 print("⚠️ Falha na execução da Gale 2.")
@@ -136,20 +169,24 @@ async def aguardar_e_executar_entradas(entrada: str, gale1: str, gale2: str,
 
             if result_gale2 == "WON":
                 print("✅ Gale 2 venceu.")
+                print("atualizando valores de ganho...")
                 await api.update_win_value(USER_ID, pnl)
+                print("atualizando ordem...")
                 await api.update_trade_order_info(order_gale2.get("id"), USER_ID, "WON NA GALE 2")
+                print("verificando valores de stop...")
+                await api.verify_stop_values(USER_ID)
             else:
                 print("❌ Gale 2 perdeu.")
+                print("atualizando valores de perda...")
                 await api.update_loss_value(USER_ID, gale2_valor)
+                print("atualizando ordem...")
                 await api.update_trade_order_info(order_gale2.get("id"), USER_ID, "LOST")
-
-            await api.verify_stop_values(USER_ID)
+                print("verificando valores de stop...")
+                await api.verify_stop_values(USER_ID)
             return
 
     print("❌ Todas as tentativas falharam.")
-    await api.update_loss_value(USER_ID, amount)
-    await api.update_trade_order_info(order.get("id"), USER_ID, "LOST")
-    await api.verify_stop_values(USER_ID)
+    print("atualizando valores de perda...")
 
 # Trata mensagens do grupo
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -189,9 +226,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Gale 2: {gale2}")
 
 
-        bot_options = await api.get_bot_options(update.effective_user.id)
-        valor_base = bot_options['entry_price']
-        is_demo = bot_options['is_demo']
+        bot_options = await api.get_bot_options(USER_ID)
+        valor_base = bot_options.get('entry_price')
+        is_demo = bot_options.get('is_demo')
+
+        print(f"Valor base: {valor_base}")
+        print(f"Modo Demo: {is_demo}")
 
         asyncio.create_task(aguardar_e_executar_entradas(
             entrada=entrada,
