@@ -21,6 +21,7 @@ async def create_trade_order_info(user_id: int, order_id: str, symbol: str, orde
         headers = {'Authorization': auth.encode()}
         hora_brasilia = pytz.timezone('America/Sao_Paulo')
         hora_now = datetime.now(hora_brasilia)
+        print(f'hora: {hora_now.isoformat()}')
         data = {
             'user_id': user_id,
             'order_id': order_id,
@@ -98,7 +99,7 @@ async def verify_stop_values(user_id):
                 async with aiohttp.ClientSession() as session:
                     auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
                     headers = {'Authorization': auth.encode()}
-                    async with session.get(f'hhttps://bot.multitradingob.com/stop_loss/{user_id}', headers=headers) as response:
+                    async with session.get(f'https://bot.multitradingob.com/stop_loss/{user_id}', headers=headers) as response:
                         return await response.json()
                     
 
