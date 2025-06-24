@@ -52,12 +52,16 @@ def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, 
     return data
 
 async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, etapa):
+    if amount > 1000:
+        amount = 1000
     order = realizar_compra(isDemo, close_type, direction, symbol, amount)
 
     if not order.get("id"):
         print(f"⚠️ Falha com {symbol}, tentando com par invertido...")
         symbol_invertido = inverter_symbol(symbol)
         print(f"🔁 Tentando com símbolo invertido: {symbol_invertido}")
+        if amount > 1000:
+            amount = 1000
         order = realizar_compra(isDemo, close_type, direction, symbol_invertido, amount)
 
         if order.get("id"):
