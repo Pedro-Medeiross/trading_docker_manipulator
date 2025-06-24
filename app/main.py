@@ -27,6 +27,15 @@ RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 
 print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
+def inverter_symbol(symbol: str) -> str:
+    if ".OTC" in symbol:
+        base, suffix = symbol.split(".OTC")
+        if len(base) == 6:
+            return base[3:] + base[:3] + ".OTC"
+    elif len(symbol) == 6:
+        return symbol[3:] + symbol[:3]
+    return symbol
+
 def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
     url_buy = 'https://broker-api.mybroker.dev/token/trades/open'
     payload = {
@@ -42,22 +51,28 @@ def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, 
     print("📤 Ordem enviada:", data)
     return data
 
-async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, etapa):
+async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, etapa):
     order = realizar_compra(isDemo, close_type, direction, symbol, amount)
-    order_id = order.get("id")
-    order_price = order.get("openPrice")
-    order_status = order.get("result")
 
-    if not order_id:
-        print("❌ Falha ao enviar ordem.")
+    if not order.get("id"):
+        print(f"⚠️ Falha com {symbol}, tentando com par invertido...")
+        symbol_invertido = inverter_symbol(symbol)
+        print(f"🔁 Tentando com símbolo invertido: {symbol_invertido}")
+        order = realizar_compra(isDemo, close_type, direction, symbol_invertido, amount)
+
+        if order.get("id"):
+            symbol = symbol_invertido
+
+    if not order.get("id"):
+        print("❌ Falha ao enviar ordem mesmo após inversão.")
         return None
 
-    await create_trade_order_info(USER_ID, order_id, symbol, direction, amount, order_price, order_status, BROKERAGE_ID)
+    await create_trade_order_info(USER_ID, order["id"], symbol, direction, amount, order.get("openPrice"), order.get("result"), BROKERAGE_ID)
 
-    url_status = f"https://broker-api.mybroker.dev/token/trades/{order_id}"
+    url_status = f"https://broker-api.mybroker.dev/token/trades/{order['id']}"
     headers = {"api-token": API_TOKEN}
 
-    print(f"🔍 Verificando resultado da ordem {order_id} para {etapa}...")
+    print(f"🔍 Verificando resultado da ordem {order['id']} para {etapa}...")
     while True:
         await asyncio.sleep(5)
         try:
@@ -97,7 +112,7 @@ async def aguardar_e_executar_entradas(data):
     gale_two = bot_options['gale_two']
 
     await aguardar_horario(entrada, "Entrada Principal")
-    order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
+    order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
 
     if not order:
         print("⚠️ Falha na execução da entrada principal.")
@@ -119,7 +134,7 @@ async def aguardar_e_executar_entradas(data):
     if (result in ["LOST", "DRAW"]) and gale1 and gale_one:
         await aguardar_horario(gale1, "Gale 1")
         gale1_valor = amount * 2
-        order_g1 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
+        order_g1 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
 
         if order_g1 and order_g1.get("result") == "WON":
             await update_win_value(USER_ID, order_g1["pnl"])
@@ -134,7 +149,7 @@ async def aguardar_e_executar_entradas(data):
         if (order_g1 and order_g1.get("result") in ["LOST", "DRAW"]) and gale2 and gale_two:
             await aguardar_horario(gale2, "Gale 2")
             gale2_valor = amount * 4
-            order_g2 = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
+            order_g2 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
 
             if order_g2 and order_g2.get("result") == "WON":
                 await update_win_value(USER_ID, order_g2["pnl"])
@@ -144,15 +159,11 @@ async def aguardar_e_executar_entradas(data):
                 await update_trade_order_info(order_g2["id"], USER_ID, "LOST")
             await verify_stop_values(USER_ID)
 
-# Consumidor do RabbitMQ com exchange fanout
+# RabbitMQ fanout consumer
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-
-    # Declara o exchange do tipo fanout
     exchange = await channel.declare_exchange("bot_signals", aio_pika.ExchangeType.FANOUT)
-
-    # Declara uma fila temporária exclusiva para este consumidor
     queue = await channel.declare_queue(exclusive=True)
     await queue.bind(exchange)
 
