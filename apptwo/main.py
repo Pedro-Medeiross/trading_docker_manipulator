@@ -10,7 +10,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 
 load_dotenv()
 
-TOKEN = os.getenv("TOKEN_TELEGRAN")
+TOKEN = os.getenv("TOKEN_TELEGRAM")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
 print("DEBUG TOKEN:", TOKEN)
