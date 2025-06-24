@@ -20,7 +20,12 @@ load_dotenv()
 API_TOKEN = os.getenv("API_TOKEN")
 USER_ID = os.getenv("USER_ID")
 BROKERAGE_ID = os.getenv("BROKERAGE_ID")
-RABBITMQ_URL = os.getenv("RABBITMQ_URL")
+host = os.getenv("RABBITMQ_HOST")
+user = os.getenv("RABBITMQ_USER")
+password = os.getenv("RABBITMQ_PASS")
+RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
+
+print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
 # Funções auxiliares reutilizadas
 

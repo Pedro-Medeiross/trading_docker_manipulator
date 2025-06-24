@@ -10,22 +10,8 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 
 load_dotenv()
 
-TOKEN = os.getenv("TOKEN_TELEGRAM")
-host = os.getenv("RABBITMQ_HOST")
-user = os.getenv("RABBITMQ_USER")
-password = os.getenv("RABBITMQ_PASS")
-RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
-
-print("🔗 RabbitMQ URL:", RABBITMQ_URL)
-
-print("DEBUG TOKEN:", TOKEN)
-if not TOKEN:
-    raise RuntimeError("TOKEN está vazio ou não foi definido.")
-
-
-print("DEBUG RABBITMQ_URL:", RABBITMQ_URL)
-if not RABBITMQ_URL:
-    raise RuntimeError("RABBITMQ_URL está vazio ou não foi definido.")
+TOKEN = os.getenv("TOKEN_TELEGRAN")
+RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
