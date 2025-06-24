@@ -22,7 +22,7 @@ services:
     container_name: telegram_publisher
     environment:
       - RABBITMQ_URL=${RABBITMQ_URL}
-      - TOKEN=${TOKEN_TELEGRAM}
+      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM}
     depends_on:
       - rabbitmq
     networks:
