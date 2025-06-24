@@ -11,7 +11,12 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN_TELEGRAM")
-RABBITMQ_URL = os.getenv("RABBITMQ_URL")
+host = os.getenv("RABBITMQ_HOST")
+user = os.getenv("RABBITMQ_USER")
+password = os.getenv("RABBITMQ_PASS")
+RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
+
+print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
 print("DEBUG TOKEN:", TOKEN)
 if not TOKEN:
