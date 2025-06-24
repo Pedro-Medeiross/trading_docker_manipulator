@@ -110,7 +110,7 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
                 return {'message': 'App iniciado!'}
             
     await api.update_status_bot(user_id, 1)
-    client.containers.create(image='docker_bot:latest', name=f'bot_{user_id}', detach=True, environment=env_vars)
+    client.containers.create(image='docker_bot:latest', name=f'bot_{user_id}', detach=True, environment=env_vars, network="trading_docker_manipulator_botnet")
     client.containers.get(f'bot_{user_id}').start()
     return {'message': 'Bot created and started'}
 
