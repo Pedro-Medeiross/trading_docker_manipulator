@@ -13,6 +13,15 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN_TELEGRAN")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
+print("DEBUG TOKEN:", TOKEN)
+if not TOKEN:
+    raise RuntimeError("TOKEN está vazio ou não foi definido.")
+
+
+print("DEBUG RABBITMQ_URL:", RABBITMQ_URL)
+if not RABBITMQ_URL:
+    raise RuntimeError("RABBITMQ_URL está vazio ou não foi definido.")
+
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
