@@ -24,6 +24,13 @@ async def get_api_key(user_id: int, brokerage_id: int):
             return api_key
         
 
+async def get_bot_options(user_id):
+    async with aiohttp.ClientSession() as session:
+        auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
+        headers = {'Authorization': auth.encode()}
+        async with session.get(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', headers=headers) as response:
+            return await response.json()
+        
 
 async def update_status_bot(user_id: int, status: str):
     async with aiohttp.ClientSession() as session:

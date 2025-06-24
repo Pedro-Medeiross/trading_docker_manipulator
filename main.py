@@ -61,6 +61,12 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
     TOKEN_TELEGRAN = os.environ.get("TOKEN_TELEGRAN")
     API_USER = os.environ.get("API_USER")
     API_PASS = os.environ.get("API_PASS")
+    RABBITMQ_URL = os.environ.get('RABBITMQ_URL')
+    bot_options = await api.get_bot_options(user_id)
+
+    stop_loss = bot_options['stop_loss']
+    stop_win = bot_options['stop_win']
+    entry_price = bot_options['entry_price']
 
     api_key = get_api_key.get('api_key')
     print(f'API Key: {api_key}')
@@ -70,6 +76,9 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
 
     if api_key is None:
         return {'message': 'api_key da corretora não cadastrada!'}
+    
+    if stop_loss or stop_win or entry_price == None:
+        return {'message': 'Configurações base faltando'}
     
     decoded_api_key = base64.b64decode(api_key).decode('utf-8')
     
@@ -81,7 +90,8 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
         'TOKEN_TELEGRAN': TOKEN_TELEGRAN,
         'API_USER': API_USER,
         'API_PASS': API_PASS,
-        'BROKERAGE_ID': BROKERAGE_ID
+        'BROKERAGE_ID': BROKERAGE_ID,
+        'RABBITMQ_URL': RABBITMQ_URL
     }
 
     for container in containers:
