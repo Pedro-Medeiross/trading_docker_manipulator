@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile.publisher
     container_name: telegram_publisher
     environment:
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@rabbitmq:5672/
+      - RABBITMQ_URL=${RABBITMQ_URL}
       - TOKEN=${TOKEN_TELEGRAM}
     depends_on:
       - rabbitmq
