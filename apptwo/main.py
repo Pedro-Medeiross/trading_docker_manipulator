@@ -16,13 +16,19 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-    await channel.default_exchange.publish(
+
+    # Cria (ou usa) um exchange do tipo fanout
+    exchange = await channel.declare_exchange("bot_signals", aio_pika.ExchangeType.FANOUT)
+
+    # Publica a mensagem no exchange (fanout ignora routing_key)
+    await exchange.publish(
         aio_pika.Message(
             body=json.dumps(data).encode(),
-            delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+            delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT  # não persistente
         ),
-        routing_key="sinais"
+        routing_key=""
     )
+
     await connection.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +70,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("📤 Publicando sinal:", signal)
         await send_to_queue(signal)
 
-# Inicializa o bot do Telegram
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_message))

@@ -27,8 +27,6 @@ RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 
 print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
-# Funções auxiliares reutilizadas
-
 def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
     url_buy = 'https://broker-api.mybroker.dev/token/trades/open'
     payload = {
@@ -41,7 +39,7 @@ def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, 
     headers = {"content-type": "application/json", "api-token": API_TOKEN}
     response = requests.post(url_buy, json=payload, headers=headers)
     data = response.json()
-    print("\U0001F4E4 Ordem enviada:", data)
+    print("📤 Ordem enviada:", data)
     return data
 
 async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, etapa):
@@ -51,7 +49,7 @@ async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amou
     order_status = order.get("result")
 
     if not order_id:
-        print("\u274c Falha ao enviar ordem.")
+        print("❌ Falha ao enviar ordem.")
         return None
 
     await create_trade_order_info(USER_ID, order_id, symbol, direction, amount, order_price, order_status, BROKERAGE_ID)
@@ -59,28 +57,28 @@ async def executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amou
     url_status = f"https://broker-api.mybroker.dev/token/trades/{order_id}"
     headers = {"api-token": API_TOKEN}
 
-    print(f"\U0001F50D Verificando resultado da ordem {order_id} para {etapa}...")
+    print(f"🔍 Verificando resultado da ordem {order_id} para {etapa}...")
     while True:
         await asyncio.sleep(5)
         try:
             response = requests.get(url_status, headers=headers)
             data = response.json()
             result = data.get("result")
-            print(f"\U0001F4CA Status atual: {result}")
+            print(f"📊 Status atual: {result}")
             if result in ["WON", "LOST", "DRAW"]:
                 return data
         except Exception as e:
-            print(f"\u26A0\ufe0f Erro ao verificar status: {e}")
+            print(f"⚠️ Erro ao verificar status: {e}")
 
 async def aguardar_horario(horario: str, etapa: str):
-    print(f"\u23F3 Aguardando horário: {horario} para {etapa}")
+    print(f"⏳ Aguardando horário: {horario} para {etapa}")
     tz_brasilia = pytz.timezone('America/Sao_Paulo')
     target_time = datetime.strptime(horario, "%H:%M").time()
     while True:
         agora = datetime.now(tz_brasilia).time()
-        print(f"\U0001F552 Horário atual: {agora.strftime('%H:%M:%S')} para {etapa}")
+        print(f"🕒 Horário atual: {agora.strftime('%H:%M:%S')} para {etapa}")
         if agora >= target_time:
-            print("\U0001F680 Horário atingido, prosseguindo...")
+            print("🚀 Horário atingido, prosseguindo...")
             return
         await asyncio.sleep(5)
 
@@ -102,7 +100,7 @@ async def aguardar_e_executar_entradas(data):
     order = await executar_ordem_e_verificar(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
 
     if not order:
-        print("\u26A0\ufe0f Falha na execução da entrada principal.")
+        print("⚠️ Falha na execução da entrada principal.")
         return
 
     result = order.get("result")
@@ -146,18 +144,25 @@ async def aguardar_e_executar_entradas(data):
                 await update_trade_order_info(order_g2["id"], USER_ID, "LOST")
             await verify_stop_values(USER_ID)
 
-# Consumidor do RabbitMQ
-
+# Consumidor do RabbitMQ com exchange fanout
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-    queue = await channel.declare_queue("sinais", durable=True)
+
+    # Declara o exchange do tipo fanout
+    exchange = await channel.declare_exchange("bot_signals", aio_pika.ExchangeType.FANOUT)
+
+    # Declara uma fila temporária exclusiva para este consumidor
+    queue = await channel.declare_queue(exclusive=True)
+    await queue.bind(exchange)
+
+    print("✅ Aguardando sinais...")
 
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             async with message.process():
                 data = json.loads(message.body.decode())
-                print("\U0001F4E2 Sinal recebido:", data)
+                print("📥 Sinal recebido:", data)
                 await aguardar_e_executar_entradas(data)
 
 if __name__ == "__main__":
