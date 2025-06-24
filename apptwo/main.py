@@ -42,6 +42,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gales_match = re.findall(r"\dº GALE: TERMINA EM: (\d{2}:\d{2})", text)
 
         ativo = ativo_match.group(1).strip() if ativo_match else None
+
+        # ✅ Limpeza do ativo (remove "/" mas mantém ".OTC")
+        if ativo and '/' in ativo:
+            partes = ativo.split('/')
+            ativo = ''.join(partes)
+            # Se houver sufixo .OTC, ele já será mantido pois não tem "/"
+            # Ex: "USD/JPY.OTC" → ["USD", "JPY.OTC"] → "USDJPY.OTC"
+
         expiracao = expiracao_match.group(1).strip() if expiracao_match else None
         entrada = entrada_match.group(1).strip() if entrada_match else None
         direcao = direcao_match.group(1).strip() if direcao_match else None
