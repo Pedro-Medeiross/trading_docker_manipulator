@@ -71,13 +71,13 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
     api_key = get_api_key.get('api_key')
     print(f'API Key: {api_key}')
 
-    print("Resetando stop values :")
+    print("Resetando stop values")
     await api.reset_stop_values(user_id)
 
     if api_key is None:
         return {'message': 'api_key da corretora não cadastrada!'}
     
-    if stop_loss or stop_win or entry_price == None:
+    if stop_loss <= 0 or stop_win <= 0 or entry_price <= 0:
         return {'message': 'Configurações base faltando'}
     
     decoded_api_key = base64.b64decode(api_key).decode('utf-8')
