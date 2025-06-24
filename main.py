@@ -62,6 +62,9 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
     API_USER = os.environ.get("API_USER")
     API_PASS = os.environ.get("API_PASS")
     RABBITMQ_URL = os.environ.get('RABBITMQ_URL')
+    RABBITMQ_HOST = os.environ.get('RABBITMQ_HOST')
+    RABBITMQ_USER = os.environ.get('RABBITMQ_USER')
+    RABBITMQ_PASS = os.environ.get('RABBITMQ_PASS')
     bot_options = await api.get_bot_options(user_id)
 
     stop_loss = bot_options['stop_loss']
@@ -91,7 +94,10 @@ async def start_container(user_id: int, credentials: HTTPBasicCredentials = Depe
         'API_USER': API_USER,
         'API_PASS': API_PASS,
         'BROKERAGE_ID': BROKERAGE_ID,
-        'RABBITMQ_URL': RABBITMQ_URL
+        'RABBITMQ_URL': RABBITMQ_URL,
+        'RABBITMQ_HOST': RABBITMQ_HOST,
+        'RABBITMQ_USER': RABBITMQ_USER,
+        'RABBITMQ_PASS': RABBITMQ_PASS
     }
 
     for container in containers:
