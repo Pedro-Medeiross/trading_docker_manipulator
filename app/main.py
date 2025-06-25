@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import aio_pika
+import aiohttp
 from dotenv import load_dotenv
 from api import (
     get_bot_options,
@@ -13,7 +14,6 @@ from api import (
 )
 from datetime import datetime
 import pytz
-import requests
 
 load_dotenv()
 
@@ -27,16 +27,18 @@ RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 
 print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
+
 def inverter_symbol(symbol: str) -> str:
     if ".OTC" in symbol:
-        base, suffix = symbol.split(".OTC")
+        base, _ = symbol.split(".OTC")
         if len(base) == 6:
             return base[3:] + base[:3] + ".OTC"
     elif len(symbol) == 6:
         return symbol[3:] + symbol[:3]
     return symbol
 
-def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
+
+async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
     url_buy = 'https://broker-api.mybroker.dev/token/trades/open'
     payload = {
         "isDemo": isDemo,
@@ -46,15 +48,27 @@ def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, 
         "amount": amount
     }
     headers = {"content-type": "application/json", "api-token": API_TOKEN}
-    response = requests.post(url_buy, json=payload, headers=headers)
-    data = response.json()
-    print("📤 Ordem enviada:", data)
-    return data
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url_buy, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    print("📤 Ordem enviada:", data)
+                    return data
+                else:
+                    print(f"❌ Erro ao enviar ordem: status {response.status}")
+                    return {}
+        except Exception as e:
+            print(f"⚠️ Erro de requisição ao enviar ordem: {e}")
+            return {}
+
 
 async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, etapa):
     if amount > 1000:
         amount = 1000
-    order = realizar_compra(isDemo, close_type, direction, symbol, amount)
+
+    order = await realizar_compra(isDemo, close_type, direction, symbol, amount)
 
     if not order.get("id"):
         print(f"⚠️ Falha com {symbol}, tentando com par invertido...")
@@ -62,7 +76,7 @@ async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amoun
         print(f"🔁 Tentando com símbolo invertido: {symbol_invertido}")
         if amount > 1000:
             amount = 1000
-        order = realizar_compra(isDemo, close_type, direction, symbol_invertido, amount)
+        order = await realizar_compra(isDemo, close_type, direction, symbol_invertido, amount)
 
         if order.get("id"):
             symbol = symbol_invertido
@@ -77,17 +91,23 @@ async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amoun
     headers = {"api-token": API_TOKEN}
 
     print(f"🔍 Verificando resultado da ordem {order['id']} para {etapa}...")
-    while True:
-        await asyncio.sleep(5)
-        try:
-            response = requests.get(url_status, headers=headers)
-            data = response.json()
-            result = data.get("result")
-            print(f"📊 Status atual: {result}")
-            if result in ["WON", "LOST", "DRAW"]:
-                return data
-        except Exception as e:
-            print(f"⚠️ Erro ao verificar status: {e}")
+
+    async with aiohttp.ClientSession() as session:
+        while True:
+            await asyncio.sleep(5)
+            try:
+                async with session.get(url_status, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        result = data.get("result")
+                        print(f"📊 Status atual: {result}")
+                        if result in ["WON", "LOST", "DRAW"]:
+                            return data
+                    else:
+                        print(f"⚠️ Erro ao verificar status da ordem: status {response.status}")
+            except Exception as e:
+                print(f"⚠️ Erro ao verificar status: {e}")
+
 
 async def aguardar_horario(horario: str, etapa: str):
     print(f"⏳ Aguardando horário: {horario} para {etapa}")
@@ -100,6 +120,7 @@ async def aguardar_horario(horario: str, etapa: str):
             print("🚀 Horário atingido, prosseguindo...")
             return
         await asyncio.sleep(5)
+
 
 async def aguardar_e_executar_entradas(data):
     entrada = data["entry_time"]
@@ -163,6 +184,7 @@ async def aguardar_e_executar_entradas(data):
                 await update_trade_order_info(order_g2["id"], USER_ID, "LOST")
             await verify_stop_values(USER_ID)
 
+
 # RabbitMQ fanout consumer
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
@@ -179,6 +201,7 @@ async def main():
                 data = json.loads(message.body.decode())
                 print("📥 Sinal recebido:", data)
                 await aguardar_e_executar_entradas(data)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
