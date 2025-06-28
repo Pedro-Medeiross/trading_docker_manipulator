@@ -79,7 +79,7 @@ async def update_loss_value(user_id, loss_value):
         
 
 
-async def verify_stop_values(user_id):
+async def verify_stop_values(user_id, brokerage_id):
             data = await get_bot_options(user_id)
 
             stop_loss = data['stop_loss']
@@ -92,12 +92,12 @@ async def verify_stop_values(user_id):
                 async with aiohttp.ClientSession() as session:
                     auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
                     headers = {'Authorization': auth.encode()}
-                    async with session.get(f'https://bot.multitradingob.com/stop_win/{user_id}', headers=headers) as response:
+                    async with session.get(f'https://bot.multitradingob.com/stop_win/{user_id}/{brokerage_id}', headers=headers) as response:
                         return await response.json()
             elif loss_value >= stop_loss:
                 print(f"🛑 Stop Loss atingido: {loss_value} >= {stop_loss}")
                 async with aiohttp.ClientSession() as session:
                     auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
                     headers = {'Authorization': auth.encode()}
-                    async with session.get(f'https://bot.multitradingob.com/stop_loss/{user_id}', headers=headers) as response:
+                    async with session.get(f'https://bot.multitradingob.com/stop_loss/{user_id}/{brokerage_id}', headers=headers) as response:
                         return await response.json()

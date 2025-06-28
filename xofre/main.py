@@ -149,12 +149,12 @@ async def aguardar_e_executar_entradas(data):
     if result == "WON":
         await update_win_value(USER_ID, pnl)
         await update_trade_order_info(order["id"], USER_ID, "WON")
-        await verify_stop_values(USER_ID)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
         return
 
     await update_loss_value(USER_ID, amount)
     await update_trade_order_info(order["id"], USER_ID, "LOST")
-    await verify_stop_values(USER_ID)
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
 
     if (result in ["LOST", "DRAW"]) and gale1 and gale_one:
         await aguardar_horario(gale1, "Gale 1")
@@ -164,12 +164,12 @@ async def aguardar_e_executar_entradas(data):
         if order_g1 and order_g1.get("result") == "WON":
             await update_win_value(USER_ID, order_g1["pnl"])
             await update_trade_order_info(order_g1["id"], USER_ID, "WON NA GALE 1")
-            await verify_stop_values(USER_ID)
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
 
         await update_loss_value(USER_ID, gale1_valor)
         await update_trade_order_info(order_g1["id"], USER_ID, "LOST")
-        await verify_stop_values(USER_ID)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
 
         if (order_g1 and order_g1.get("result") in ["LOST", "DRAW"]) and gale2 and gale_two:
             await aguardar_horario(gale2, "Gale 2")
@@ -182,14 +182,14 @@ async def aguardar_e_executar_entradas(data):
             else:
                 await update_loss_value(USER_ID, gale2_valor)
                 await update_trade_order_info(order_g2["id"], USER_ID, "LOST")
-            await verify_stop_values(USER_ID)
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
 
 
 # RabbitMQ fanout consumer
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-    exchange = await channel.declare_exchange("bot_signals", aio_pika.ExchangeType.FANOUT)
+    exchange = await channel.declare_exchange("xofre_signals", aio_pika.ExchangeType.FANOUT)
     queue = await channel.declare_queue(exclusive=True)
     await queue.bind(exchange)
 

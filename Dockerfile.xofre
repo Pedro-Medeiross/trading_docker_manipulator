@@ -1,8 +1,8 @@
 FROM python:3.13.3-bullseye
 
-COPY app /app
-
 WORKDIR /app
+
+COPY xofre /app
 
 RUN pip install -r requirements.txt
 

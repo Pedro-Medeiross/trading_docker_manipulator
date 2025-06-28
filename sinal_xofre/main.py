@@ -18,7 +18,7 @@ async def send_to_queue(data):
     channel = await connection.channel()
 
     # Cria (ou usa) um exchange do tipo fanout
-    exchange = await channel.declare_exchange("bot_signals", aio_pika.ExchangeType.FANOUT)
+    exchange = await channel.declare_exchange("xofre_signals", aio_pika.ExchangeType.FANOUT)
 
     # Publica a mensagem no exchange (fanout ignora routing_key)
     await exchange.publish(
