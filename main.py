@@ -37,6 +37,17 @@ BROKERAGE_CONFIGS = {
     },
 }
 
+# Pré-build de todas as imagens no startup
+for brokerage_id, config in BROKERAGE_CONFIGS.items():
+    image_name = config["image"]
+    images = client.images.list()
+    if not any(image_name in tag for image in images for tag in image.tags):
+        print(f'Image {image_name} not found, building...')
+        client.images.build(path=config["build_path"], dockerfile=config["dockerfile"], tag=image_name)
+        print(f'Image {image_name} built successfully.')
+    else:
+        print(f'Image {image_name} already exists.')
+
 def get_basic_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     correct_username = secrets.compare_digest(credentials.username, os.getenv('API_USER'))
     correct_password = secrets.compare_digest(credentials.password, os.getenv('API_PASS'))
@@ -55,11 +66,6 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
 
     config = BROKERAGE_CONFIGS[brokerage_id]
     image_name = config["image"]
-
-    images = client.images.list()
-    if not any(image_name in tag for image in images for tag in image.tags):
-        print(f'Image {image_name} not found, building...')
-        client.images.build(path=config["build_path"], dockerfile=config["dockerfile"], tag=image_name)
 
     status_bot = await api.get_status_bot(user_id)
     get_api_key = await api.get_api_key(user_id, brokerage_id)
