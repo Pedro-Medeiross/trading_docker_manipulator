@@ -87,7 +87,7 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
         'RABBITMQ_PASS': os.environ.get('RABBITMQ_PASS')
     }
 
-    container_name = f"bot_{user_id}"
+    container_name = f"bot_{user_id}_{brokerage_id}"
     containers = client.containers.list(all=True)
 
     for container in containers:
@@ -110,7 +110,7 @@ async def stop_container(user_id: int, brokerage_id: int, credentials: HTTPBasic
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
-    container_name = f'bot_{user_id}'
+    container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
@@ -125,7 +125,7 @@ async def stop_container(user_id: int, brokerage_id: int, credentials: HTTPBasic
 
 @app.get("/status/{user_id}/{brokerage_id}")
 async def status_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
-    container_name = f'bot_{user_id}'
+    container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
@@ -140,7 +140,7 @@ async def stop_loss_container(user_id: int, brokerage_id: int, credentials: HTTP
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
-    container_name = f'bot_{user_id}'
+    container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
@@ -158,7 +158,7 @@ async def stop_win_container(user_id: int, brokerage_id: int, credentials: HTTPB
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
-    container_name = f'bot_{user_id}'
+    container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
@@ -174,7 +174,7 @@ async def stop_win_container(user_id: int, brokerage_id: int, credentials: HTTPB
 async def restart_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
     status_bot = await api.get_status_bot(user_id)
 
-    container_name = f'bot_{user_id}'
+    container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
