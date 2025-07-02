@@ -130,7 +130,7 @@ async def aguardar_e_executar_entradas(data):
     direction = data["direction"]
     symbol = data["symbol"]
 
-    bot_options = await get_bot_options(USER_ID)
+    bot_options = await get_bot_options(USER_ID, BROKERAGE_ID)
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
     gale_one = bot_options['gale_one']

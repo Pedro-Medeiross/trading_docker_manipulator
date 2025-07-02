@@ -7,11 +7,11 @@ import pytz
 load_dotenv()
 
 
-async def get_bot_options(user_id):
+async def get_bot_options(user_id:int, brokerage_id: int):
     async with aiohttp.ClientSession() as session:
         auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
         headers = {'Authorization': auth.encode()}
-        async with session.get(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', headers=headers) as response:
+        async with session.get(f'https://api.multitradingob.com/bot-options/admin/{user_id}/{brokerage_id}', headers=headers) as response:
             return await response.json()
         
 
@@ -33,21 +33,21 @@ async def create_trade_order_info(user_id: int, order_id: str, symbol: str, orde
             'date_time': hora_now.isoformat(),
             'brokerage_id': brokerage_id
         }
-        async with session.post('https://api.multitradingob.com/trade-order-info/trade_order_info/create', json=data, headers=headers) as response:
+        async with session.post('https://api.multitradingob.com/trade-order-info', json=data, headers=headers) as response:
             return await response.json()
         
 
-async def update_trade_order_info(order_id, user_id,  status):
+async def update_trade_order_info(order_id: str, user_id: int,  status: str):
     async with aiohttp.ClientSession() as session:
         auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
         headers = {'Authorization': auth.encode()}
         data = {'user_id': user_id, 'order_id': order_id, 'status': status, }
-        async with session.put(f'https://api.multitradingob.com/trade-order-info/trade_order_info/update', json=data, headers=headers) as response:
+        async with session.put(f'https://api.multitradingob.com/trade-order-info/{order_id}', json=data, headers=headers) as response:
             return await response.json()
 
 
-async def update_win_value(user_id, win_value):
-    data = await get_bot_options(user_id)
+async def update_win_value(user_id: int, win_value: float, brokerage_id: int):
+    data = await get_bot_options(user_id, brokerage_id)
 
     win_data_value = data['win_value']
 
@@ -58,12 +58,12 @@ async def update_win_value(user_id, win_value):
             auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
             headers = {'Authorization': auth.encode()}
             data = {'win_value': win_data_value}
-            async with session.put(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', json=data, headers=headers) as response:
+            async with session.put(f'https://api.multitradingob.com/bot-options/admin/{user_id}/{brokerage_id}', json=data, headers=headers) as response:
                 return await response.json()
 
 
-async def update_loss_value(user_id, loss_value):
-    data = await get_bot_options(user_id)
+async def update_loss_value(user_id: int, loss_value: float, brokerage_id: int):
+    data = await get_bot_options(user_id, brokerage_id)
 
     loss_data_value = data['loss_value']
 
@@ -74,13 +74,13 @@ async def update_loss_value(user_id, loss_value):
             auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
             headers = {'Authorization': auth.encode()}
             data = {'loss_value': loss_data_value}
-            async with session.put(f'https://api.multitradingob.com/bot-options/bot-options/{user_id}', json=data, headers=headers) as response:
+            async with session.put(f'https://api.multitradingob.com/bot-options/admin/{user_id}/{brokerage_id}', json=data, headers=headers) as response:
                 return await response.json()
         
 
 
-async def verify_stop_values(user_id, brokerage_id):
-            data = await get_bot_options(user_id)
+async def verify_stop_values(user_id: int, brokerage_id: int):
+            data = await get_bot_options(user_id, brokerage_id)
 
             stop_loss = data['stop_loss']
             stop_win = data['stop_win']

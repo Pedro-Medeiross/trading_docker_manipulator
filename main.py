@@ -67,9 +67,10 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     config = BROKERAGE_CONFIGS[brokerage_id]
     image_name = config["image"]
 
-    status_bot = await api.get_status_bot(user_id)
+    status_bot = await api.get_status_bot(user_id, brokerage_id)
     get_api_key = await api.get_api_key(user_id, brokerage_id)
-    bot_options = await api.get_bot_options(user_id)
+    bot_options = await api.get_bot_options(user_id, brokerage_id)
+    api.reset_stop_values(user_id, brokerage_id)
 
     api_key = get_api_key.get('api_key')
     if not api_key:
@@ -101,18 +102,18 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
             if container.status == 'running' and status_bot == 1:
                 return {'message': 'App já iniciado!'}
             if container.status == 'exited':
-                await api.update_status_bot(user_id, 1)
+                await api.update_status_bot(user_id, 1, brokerage_id)
                 container.start()
                 return {'message': 'App iniciado!'}
 
-    await api.update_status_bot(user_id, 1)
+    await api.update_status_bot(user_id, 1, brokerage_id)
     client.containers.create(image=image_name, name=container_name, detach=True, environment=env_vars, network="trading_docker_manipulator_botnet")
     client.containers.get(container_name).start()
     return {'message': 'Bot created and started'}
 
 @app.get("/stop/{user_id}/{brokerage_id}")
 async def stop_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
-    status_bot = await api.get_status_bot(user_id)
+    status_bot = await api.get_status_bot(user_id, brokerage_id)
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
@@ -121,7 +122,7 @@ async def stop_container(user_id: int, brokerage_id: int, credentials: HTTPBasic
 
     for container in containers:
         if container.name == container_name:
-            await api.update_status_bot(user_id, 0)
+            await api.update_status_bot(user_id, 0, brokerage_id)
             if container.status == 'running':
                 container.kill()
                 return {'message': 'App parado!'}
@@ -142,7 +143,7 @@ async def status_container(user_id: int, brokerage_id: int, credentials: HTTPBas
 
 @app.get("/stop_loss/{user_id}/{brokerage_id}")
 async def stop_loss_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
-    status_bot = await api.get_status_bot(user_id)
+    status_bot = await api.get_status_bot(user_id, brokerage_id)
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
@@ -151,7 +152,7 @@ async def stop_loss_container(user_id: int, brokerage_id: int, credentials: HTTP
 
     for container in containers:
         if container.name == container_name:
-            await api.update_status_bot(user_id, 3)
+            await api.update_status_bot(user_id, 3, brokerage_id)
             if container.status == 'running':
                 container.kill()
             return {'message': 'Stop loss ativado!'}
@@ -160,7 +161,7 @@ async def stop_loss_container(user_id: int, brokerage_id: int, credentials: HTTP
 
 @app.get("/stop_win/{user_id}/{brokerage_id}")
 async def stop_win_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
-    status_bot = await api.get_status_bot(user_id)
+    status_bot = await api.get_status_bot(user_id, brokerage_id)
     if status_bot == 0:
         return {'message': 'App já parado!'}
 
@@ -169,7 +170,7 @@ async def stop_win_container(user_id: int, brokerage_id: int, credentials: HTTPB
 
     for container in containers:
         if container.name == container_name:
-            await api.update_status_bot(user_id, 2)
+            await api.update_status_bot(user_id, 2, brokerage_id)
             if container.status == 'running':
                 container.kill()
             return {'message': 'Stop win ativado!'}
@@ -178,14 +179,14 @@ async def stop_win_container(user_id: int, brokerage_id: int, credentials: HTTPB
 
 @app.get("/restart/{user_id}/{brokerage_id}")
 async def restart_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
-    status_bot = await api.get_status_bot(user_id)
+    status_bot = await api.get_status_bot(user_id, brokerage_id)
 
     container_name = f'bot_{user_id}_{brokerage_id}'
     containers = client.containers.list(all=True)
 
     for container in containers:
         if container.name == container_name:
-            await api.update_status_bot(user_id, 1)
+            await api.update_status_bot(user_id, 1, brokerage_id)
             if container.status == 'running':
                 container.restart()
                 return {'message': 'App reiniciado!'}
