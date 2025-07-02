@@ -31,17 +31,18 @@ async def create_trade_order_info(user_id: int, order_id: str, symbol: str, orde
             'price': price,
             'status': status,
             'date_time': hora_now.isoformat(),
-            'brokerage_id': brokerage_id
+            'brokerage_id': brokerage_id,
+            'pnl': 0
         }
         async with session.post('https://api.multitradingob.com/trade-order-info', json=data, headers=headers) as response:
             return await response.json()
         
 
-async def update_trade_order_info(order_id: str, user_id: int,  status: str):
+async def update_trade_order_info(order_id: str, user_id: int,  status: str, pnl:float):
     async with aiohttp.ClientSession() as session:
         auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
         headers = {'Authorization': auth.encode()}
-        data = {'user_id': user_id, 'order_id': order_id, 'status': status, }
+        data = {'user_id': user_id, 'order_id': order_id, 'status': status, 'pnl': pnl }
         async with session.put(f'https://api.multitradingob.com/trade-order-info/{order_id}', json=data, headers=headers) as response:
             return await response.json()
 

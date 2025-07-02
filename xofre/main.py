@@ -85,7 +85,7 @@ async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amoun
         print("❌ Falha ao enviar ordem mesmo após inversão.")
         return None
 
-    await create_trade_order_info(USER_ID, order["id"], symbol, direction, amount, order.get("openPrice"), order.get("result"), BROKERAGE_ID)
+    await create_trade_order_info(user_id=USER_ID, order_id=order["id"], symbol=symbol, order_type=direction, quantity=amount, price=order.get("openPrice"), status=order.get("result"), brokerage_id=BROKERAGE_ID)
 
     url_status = f"https://broker-api.mybroker.dev/token/trades/{order['id']}"
     headers = {"api-token": API_TOKEN}
@@ -130,7 +130,7 @@ async def aguardar_e_executar_entradas(data):
     direction = data["direction"]
     symbol = data["symbol"]
 
-    bot_options = await get_bot_options(USER_ID, BROKERAGE_ID)
+    bot_options = await get_bot_options(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
     gale_one = bot_options['gale_one']
@@ -147,14 +147,16 @@ async def aguardar_e_executar_entradas(data):
     pnl = order.get("pnl")
 
     if result == "WON":
-        await update_win_value(USER_ID, pnl)
-        await update_trade_order_info(order["id"], USER_ID, "WON")
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        await update_win_value(user_id=USER_ID, win_value=pnl, brokerage_id=BROKERAGE_ID)
+        await update_trade_order_info(order_id=order["id"], user_id=USER_ID, status="WON", pnl=pnl)
+        await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+        return
+        await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
         return
 
-    await update_loss_value(USER_ID, amount)
-    await update_trade_order_info(order["id"], USER_ID, "LOST")
-    await verify_stop_values(USER_ID, BROKERAGE_ID)
+    await update_loss_value(user_id=USER_ID, loss_value=amount, brokerage_id=BROKERAGE_ID)
+    await update_trade_order_info(order_id=order["id"], user_id=USER_ID, status="LOST", pnl=pnl)
+    await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
 
     if (result in ["LOST", "DRAW"]) and gale1 and gale_one:
         await aguardar_horario(gale1, "Gale 1")
@@ -162,14 +164,14 @@ async def aguardar_e_executar_entradas(data):
         order_g1 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
 
         if order_g1 and order_g1.get("result") == "WON":
-            await update_win_value(USER_ID, order_g1["pnl"])
-            await update_trade_order_info(order_g1["id"], USER_ID, "WON NA GALE 1")
-            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            await update_win_value(user_id=USER_ID, win_value=order_g1["pnl"], brokerage_id=BROKERAGE_ID)
+            await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="WON NA GALE 1", pnl=pnl)
+            await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
             return
 
-        await update_loss_value(USER_ID, gale1_valor)
-        await update_trade_order_info(order_g1["id"], USER_ID, "LOST")
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        await update_loss_value(user_id=USER_ID, loss_value=gale1_valor, brokerage_id=BROKERAGE_ID)
+        await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="LOST", pnl=pnl)
+        await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
 
         if (order_g1 and order_g1.get("result") in ["LOST", "DRAW"]) and gale2 and gale_two:
             await aguardar_horario(gale2, "Gale 2")
@@ -177,12 +179,12 @@ async def aguardar_e_executar_entradas(data):
             order_g2 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
 
             if order_g2 and order_g2.get("result") == "WON":
-                await update_win_value(USER_ID, order_g2["pnl"])
-                await update_trade_order_info(order_g2["id"], USER_ID, "WON NA GALE 2")
+                await update_win_value(user_id=USER_ID, win_value=order_g2["pnl"], brokerage_id=BROKERAGE_ID)
+                await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="WON NA GALE 2", pnl=pnl)
             else:
-                await update_loss_value(USER_ID, gale2_valor)
-                await update_trade_order_info(order_g2["id"], USER_ID, "LOST")
-            await verify_stop_values(USER_ID, BROKERAGE_ID)
+                await update_loss_value(user_id=USER_ID, loss_value=gale2_valor, brokerage_id=BROKERAGE_ID)
+                await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="LOST", pnl=pnl)
+            await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
 
 
 # RabbitMQ fanout consumer
