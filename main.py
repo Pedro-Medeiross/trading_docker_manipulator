@@ -70,7 +70,7 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     status_bot = await api.get_status_bot(user_id, brokerage_id)
     get_api_key = await api.get_api_key(user_id, brokerage_id)
     bot_options = await api.get_bot_options(user_id, brokerage_id)
-    api.reset_stop_values(user_id, brokerage_id)
+    await api.reset_stop_values(user_id, brokerage_id)
 
     api_key = get_api_key.get('api_key')
     if not api_key:
