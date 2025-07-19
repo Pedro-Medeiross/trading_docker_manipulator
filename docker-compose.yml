@@ -15,14 +15,40 @@ services:
     networks:
       - botnet
 
-  publisher:
+  publisher_xofre:
     build:
       context: .
-      dockerfile: Dockerfile.publisher
-    container_name: telegram_publisher
+      dockerfile: Dockerfile.publisher.xofre
+    container_name: telegram_publisher_xofre
     environment:
       - RABBITMQ_URL=${RABBITMQ_URL}
-      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM}
+      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM_XOFRE}
+    depends_on:
+      - rabbitmq
+    networks:
+      - botnet
+
+  publisher_avalon:
+    build:
+      context: .
+      dockerfile: Dockerfile.publisher.avalon
+    container_name: telegram_publisher_avalon
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM_AVALON}
+    depends_on:
+      - rabbitmq
+    networks:
+      - botnet
+
+  publisher_polarium:
+    build:
+      context: .
+      dockerfile: Dockerfile.publisher.polarium
+    container_name: telegram_publisher_polarium
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM_POLARIUM}
     depends_on:
       - rabbitmq
     networks:

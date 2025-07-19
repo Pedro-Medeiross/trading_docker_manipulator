@@ -35,6 +35,16 @@ BROKERAGE_CONFIGS = {
         "dockerfile": "./Dockerfile.xofre",
         "build_path": "."
     },
+    2:{
+        "image": "polarium_bot:latest",
+        "dockerfile": "./Dockerfile.polarium",
+        "build_path": "."
+    },
+    3:{
+        "image": "avalon_bot:latest",
+        "dockerfile": "./Dockerfile.avalon",
+        "build_path": "."
+    },
 }
 
 # Pré-build de todas as imagens no startup
