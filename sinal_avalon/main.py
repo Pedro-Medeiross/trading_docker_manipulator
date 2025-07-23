@@ -32,23 +32,25 @@ async def send_to_queue(data):
     await connection.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and "✅ ENTRADA CONFIRMADA ✅" in update.message.text:
-        text = update.message.text
+    if not update.message:
+        return
 
+    text = update.message.text.strip()
+
+    # 🎯 Caso 1: Sinal de entrada
+    if "✅ ENTRADA CONFIRMADA ✅" in text:
         ativo_match = re.search(r"Ativo:\s*(.+)", text)
         expiracao_match = re.search(r"Expiração:\s*(.+)", text)
         entrada_match = re.search(r"Entrada:\s*(\d{2}:\d{2})", text)
-        direcao_match = re.search(r"Direção:\s*[\S]+\s+([A-Z]+)", text)
+        direcao_match = re.search(r"Direção:\s*Entrada\s+em\s+(\w+)", text)
         gales_match = re.findall(r"\dº GALE: TERMINA EM: (\d{2}:\d{2})", text)
 
         ativo = ativo_match.group(1).strip() if ativo_match else None
 
-        # ✅ Limpeza do ativo (remove "/" mas mantém ".OTC")
+        # Limpeza do ativo (remove "/")
         if ativo and '/' in ativo:
             partes = ativo.split('/')
             ativo = ''.join(partes)
-            # Se houver sufixo .OTC, ele já será mantido pois não tem "/"
-            # Ex: "USD/JPY.OTC" → ["USD", "JPY.OTC"] → "USDJPY.OTC"
 
         expiracao = expiracao_match.group(1).strip() if expiracao_match else None
         entrada = entrada_match.group(1).strip() if entrada_match else None
@@ -61,12 +63,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif expiracao == "M5":
             expiracao = "05:00"
 
-        if direcao == "COMPRA":
+        if direcao and direcao.lower() == "call":
             direcao = "BUY"
-        elif direcao == "VENDA":
+        elif direcao and direcao.lower() == "put":
             direcao = "SELL"
 
         signal = {
+            "type": "entry",
             "symbol": ativo,
             "expiration": expiracao,
             "entry_time": entrada,
@@ -75,8 +78,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "gale2": gale2
         }
 
-        print("📤 Publicando sinal:", signal)
+        print("📤 Publicando sinal de entrada:", signal)
         await send_to_queue(signal)
+
+    # 🎯 Caso 2: Resultado (WIN ou LOSS)
+    elif text.upper().strip() in ["WIN", "LOSS"]:
+        resultado = text.upper().strip()
+        print(f"📥 Resultado identificado: {resultado}")
+
+        # Se você tiver como identificar o par e o timeframe, insira aqui
+        # Caso contrário, apenas publique o resultado simples
+        result_payload = {
+            "type": "result",
+            "result": resultado
+            # opcional: symbol, timeframe, etc.
+        }
+
+        print("📤 Publicando resultado:", result_payload)
+        await send_to_queue(result_payload)
+
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
