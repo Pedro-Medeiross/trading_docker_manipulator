@@ -27,6 +27,8 @@ password = os.getenv("RABBITMQ_PASS")
 RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 
 resultado_global = None
+sinal_ativo = None
+proxima_gale = 1
 
 print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
@@ -141,6 +143,21 @@ async def aguardar_resultado(timeout=60):
         await asyncio.sleep(1)
     return None
 
+async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbol, amount):
+    print(f"🚨 Executando Gale {n_gale}")
+    valor = amount * (2 ** n_gale)
+    etapa = f"Gale {n_gale}"
+    order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, valor, etapa)
+    result = await aguardar_resultado(70)
+
+    if result == "WIN":
+        await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
+        await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status=f"WON NA {etapa.upper()}", pnl=order['pnl'])
+    else:
+        await update_loss_value(user_id=USER_ID, loss_value=valor, brokerage_id=BROKERAGE_ID)
+        await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="LOST", pnl=order['pnl'])
+    await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+
 async def aguardar_horario(horario: str, etapa: str):
     print(f"⏳ Aguardando horário: {horario} para {etapa}")
     tz_brasilia = pytz.timezone('America/Sao_Paulo')
@@ -153,7 +170,9 @@ async def aguardar_horario(horario: str, etapa: str):
         await asyncio.sleep(5)
 
 async def aguardar_e_executar_entradas(data):
-    global resultado_global
+    global sinal_ativo, proxima_gale
+    sinal_ativo = data
+    proxima_gale = 1
 
     entrada = data["entry_time"]
     gale1 = data["gale1"]
@@ -165,49 +184,25 @@ async def aguardar_e_executar_entradas(data):
     bot_options = await get_bot_options(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
-    gale_one = bot_options['gale_one']
-    gale_two = bot_options['gale_two']
 
     await aguardar_horario(entrada, "Entrada Principal")
     order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
-    if not order:
-        return
 
     result = await aguardar_resultado()
     if result == "WIN":
         await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="WON", pnl=order['pnl'])
         await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-        return
-
-    if gale1 and gale_one:
-        await aguardar_horario(gale1, "Gale 1")
-        gale1_valor = amount * 2
-        order_g1 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
-
-        result = await aguardar_resultado()
-        if result == "WIN":
-            await update_win_value(user_id=USER_ID, win_value=order_g1['pnl'], brokerage_id=BROKERAGE_ID)
-            await update_trade_order_info(order_id=order_g1['id'], user_id=USER_ID, status="WON NA GALE 1", pnl=order_g1['pnl'])
-            await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-            return
-
-        if gale2 and gale_two:
+    else:
+        if gale1:
+            await aguardar_horario(gale1, "Gale 1")
+            await executar_gale_com_timeout(1, isDemo, close_type, direction, symbol, amount)
+        if gale2:
             await aguardar_horario(gale2, "Gale 2")
-            gale2_valor = amount * 4
-            order_g2 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
-            result = await aguardar_resultado(70)
-
-            if result == "WIN":
-                await update_win_value(user_id=USER_ID, win_value=order_g2['pnl'], brokerage_id=BROKERAGE_ID)
-                await update_trade_order_info(order_id=order_g2['id'], user_id=USER_ID, status="WON NA GALE 2", pnl=order_g2['pnl'])
-            else:
-                await update_loss_value(user_id=USER_ID, loss_value=gale2_valor, brokerage_id=BROKERAGE_ID)
-                await update_trade_order_info(order_id=order_g2['id'], user_id=USER_ID, status="LOST", pnl=order_g2['pnl'])
-            await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+            await executar_gale_com_timeout(2, isDemo, close_type, direction, symbol, amount)
 
 async def main():
-    global resultado_global
+    global resultado_global, sinal_ativo
 
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
@@ -221,12 +216,20 @@ async def main():
         async for message in queue_iter:
             async with message.process():
                 data = json.loads(message.body.decode())
-                if data.get("type") == "result":
+                tipo = data.get("type")
+
+                if tipo == "result":
                     resultado_global = data.get("result")
                     print(f"📊 Resultado recebido: {resultado_global}")
-                elif data.get("type") == "entry":
+
+                elif tipo == "entry":
                     print("📥 Sinal recebido:", data)
                     await aguardar_e_executar_entradas(data)
+
+                elif tipo == "gale_trigger":
+                    gale = data.get("gale")
+                    print(f"🔔 Trigger de GALE {gale} recebido (mas usando fallback de timeout)")
+                    # Ignorado, pois fallback por timeout é padrão agora
 
 if __name__ == "__main__":
     asyncio.run(main())

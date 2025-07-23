@@ -1,4 +1,3 @@
-# publisher.py
 import os
 import re
 import json
@@ -17,14 +16,12 @@ async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
 
-    # Cria (ou usa) um exchange do tipo fanout
     exchange = await channel.declare_exchange("avalon_signals", aio_pika.ExchangeType.FANOUT)
 
-    # Publica a mensagem no exchange (fanout ignora routing_key)
     await exchange.publish(
         aio_pika.Message(
             body=json.dumps(data).encode(),
-            delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT  # não persistente
+            delivery_mode=aio_pika.DeliveryMode.NOT_PERSISTENT
         ),
         routing_key=""
     )
@@ -32,7 +29,7 @@ async def send_to_queue(data):
     await connection.close()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not update.message.text:
         return
 
     text = update.message.text.strip()
@@ -47,7 +44,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ativo = ativo_match.group(1).strip() if ativo_match else None
 
-        # Limpeza do ativo (remove "/")
         if ativo and '/' in ativo:
             partes = ativo.split('/')
             ativo = ''.join(partes)
@@ -82,21 +78,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_to_queue(signal)
 
     # 🎯 Caso 2: Resultado (WIN ou LOSS)
-    elif text.upper().strip() in ["WIN", "LOSS"]:
-        resultado = text.upper().strip()
-        print(f"📥 Resultado identificado: {resultado}")
-
-        # Se você tiver como identificar o par e o timeframe, insira aqui
-        # Caso contrário, apenas publique o resultado simples
+    elif text.upper() in ["WIN", "LOSS"]:
+        resultado = text.upper()
         result_payload = {
             "type": "result",
             "result": resultado
-            # opcional: symbol, timeframe, etc.
         }
-
         print("📤 Publicando resultado:", result_payload)
         await send_to_queue(result_payload)
 
+    # 🎯 Caso 3: Detecção de gale
+    elif text.startswith("🔄 Fazer gale"):
+        gale_match = re.search(r"Fazer gale\s+(\d+)", text)
+        if gale_match:
+            gale_count = int(gale_match.group(1))
+            gale_payload = {
+                "type": "gale_trigger",
+                "gale": gale_count
+            }
+            print("📤 Publicando trigger de gale:", gale_payload)
+            await send_to_queue(gale_payload)
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
