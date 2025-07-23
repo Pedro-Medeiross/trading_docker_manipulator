@@ -78,31 +78,39 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     image_name = config["image"]
 
     status_bot = await api.get_status_bot(user_id, brokerage_id)
-    get_api_key = await api.get_api_key(user_id, brokerage_id)
     bot_options = await api.get_bot_options(user_id, brokerage_id)
     await api.reset_stop_values(user_id, brokerage_id)
 
-    api_key = get_api_key.get('api_key')
-    if not api_key:
-        return {'message': 'api_key da corretora não cadastrada!'}
+    user_brokerages = await api.get_user_brokerages(user_id, brokerage_id)
 
     if bot_options['stop_loss'] <= 0 or bot_options['stop_win'] <= 0 or bot_options['entry_price'] <= 0:
         return {'message': 'Configurações base faltando'}
 
-    decoded_api_key = base64.b64decode(api_key).decode('utf-8')
+    # Verifica se corretora usa API Key ou Username/Password
+    usa_api_key = config.get("auth_type") == "apikey"
 
     env_vars = {
         'USER_ID': user_id,
-        'API_TOKEN': decoded_api_key,
-        'TOKEN_TELEGRAN': os.environ.get("TOKEN_TELEGRAN"),
-        'API_USER': os.environ.get("API_USER"),
-        'API_PASS': os.environ.get("API_PASS"),
         'BROKERAGE_ID': brokerage_id,
         'RABBITMQ_URL': os.environ.get('RABBITMQ_URL'),
         'RABBITMQ_HOST': os.environ.get('RABBITMQ_HOST'),
         'RABBITMQ_USER': os.environ.get('RABBITMQ_USER'),
-        'RABBITMQ_PASS': os.environ.get('RABBITMQ_PASS')
+        'RABBITMQ_PASS': os.environ.get('RABBITMQ_PASS'),
+        'API_USER': os.environ.get("API_USER"),
+        'API_PASS': os.environ.get("API_PASS"),
+        'TOKEN_TELEGRAN': os.environ.get("TOKEN_TELEGRAN")
     }
+
+    if usa_api_key:
+        get_api_key = await api.get_api_key(user_id, brokerage_id)
+        api_key = get_api_key.get('api_key')
+        if not api_key:
+            return {'message': 'api_key da corretora não cadastrada!'}
+        decoded_api_key = base64.b64decode(api_key).decode('utf-8')
+        env_vars['API_TOKEN'] = decoded_api_key
+    else:
+        env_vars['BROKERAGE_USERNAME'] = user_brokerages.get('brokerage_username', '')
+        env_vars['BROKERAGE_PASSWORD'] = user_brokerages.get('brokerage_password', '')
 
     container_name = f"bot_{user_id}_{brokerage_id}"
     containers = client.containers.list(all=True)
@@ -120,6 +128,7 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     client.containers.create(image=image_name, name=container_name, detach=True, environment=env_vars, network="trading_docker_manipulator_botnet")
     client.containers.get(container_name).start()
     return {'message': 'Bot created and started'}
+
 
 @app.get("/stop/{user_id}/{brokerage_id}")
 async def stop_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
