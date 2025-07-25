@@ -25,6 +25,8 @@ host = os.getenv("RABBITMQ_HOST")
 user = os.getenv("RABBITMQ_USER")
 password = os.getenv("RABBITMQ_PASS")
 RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
+BROKERAGE_USERNAME = os.getenv("BROKERAGE_USERNAME")
+BROKERAGE_PASSWORD = os.getenv("BROKERAGE_PASSWORD")
 
 resultado_global = None
 sinal_ativo = None
@@ -56,9 +58,6 @@ async def consultar_balance(account_type: str):
 
 async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
     url_buy = 'http://avalon_api:3001/api/trade/digital/buy'
-    user_brokerages = await get_user_brokerages(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-    EMAIL = user_brokerages['brokerage_username']
-    PASSWORD = user_brokerages['brokerage_password']
 
     period_seconds = 0
     if close_type:
@@ -74,8 +73,8 @@ async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol:
     balance_antes = await consultar_balance(account_type)
 
     payload = {
-        "email": EMAIL,
-        "password": PASSWORD,
+        "email": BROKERAGE_USERNAME,
+        "password": BROKERAGE_PASSWORD,
         "assetName": symbol,
         "operationValue": float(amount),
         "direction": api_direction,
