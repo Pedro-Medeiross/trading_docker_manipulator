@@ -15,6 +15,7 @@ from api import (
 )
 from datetime import datetime
 import pytz
+import uuid
 
 load_dotenv()
 
@@ -35,12 +36,6 @@ proxima_gale = 1
 print("🔗 RabbitMQ URL:", RABBITMQ_URL)
 
 def inverter_symbol(symbol: str) -> str:
-    if ".OTC" in symbol:
-        base, _ = symbol.split(".OTC")
-        if len(base) == 6:
-            return base[3:] + base[:3] + ".OTC"
-    elif len(symbol) == 6:
-        return symbol[3:] + symbol[:3]
     return symbol
 
 async def consultar_balance(account_type: str):
@@ -56,7 +51,7 @@ async def consultar_balance(account_type: str):
                         return wallet["amount"]
             return None
 
-async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
+async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float, trade_id: str):
     url_buy = 'http://avalon_api:3001/api/trade/digital/buy'
 
     period_seconds = 0
@@ -89,9 +84,8 @@ async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol:
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url_buy, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    order_id = str(data.get("id", ""))
+                data = await response.json()
+                if response.status == 201:
                     await asyncio.sleep(2)
                     balance_depois = await consultar_balance(account_type)
                     pnl = 0
@@ -100,39 +94,35 @@ async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol:
                     else:
                         pnl = 0
 
-                    print(f"✅ Ordem enviada: ID {order_id}, PnL: {pnl}")
+                    print(f"✅ Ordem enviada: ID {trade_id}, PnL: {pnl}")
                     return {
-                        "id": order_id,
+                        "id": trade_id,
                         "result": data.get("status", ""),
                         "openPrice": data.get("open_price", 0),
                         "pnl": pnl
                     }
                 else:
                     print(f"❌ Erro ao enviar ordem: status {response.status}")
+                    print("Resposta:", data)
                     return {}
         except Exception as e:
             print(f"⚠️ Erro de requisição ao enviar ordem: {e}")
             return {}
 
-async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, etapa):
+async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
     if amount > 1000:
         amount = 1000
 
-    order = await realizar_compra(isDemo, close_type, direction, symbol, amount)
-    if not order.get("id"):
-        symbol_invertido = inverter_symbol(symbol)
-        print(f"🔁 Tentando com símbolo invertido: {symbol_invertido}")
-        order = await realizar_compra(isDemo, close_type, direction, symbol_invertido, amount)
-        if order.get("id"):
-            symbol = symbol_invertido
+    trade_id = str(uuid.uuid4())
+    await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
+                                  quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
+
+    order = await realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id)
 
     if not order.get("id"):
-        print("❌ Falha ao enviar ordem mesmo após inversão.")
+        print("❌ Falha ao enviar ordem.")
         return None
 
-    await create_trade_order_info(user_id=USER_ID, order_id=order["id"], symbol=symbol, order_type=direction,
-                                  quantity=amount, price=order.get("openPrice"), status=order.get("result"),
-                                  brokerage_id=BROKERAGE_ID)
     return order
 
 async def aguardar_resultado(timeout=60):
@@ -152,7 +142,7 @@ async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbo
     print(f"🚨 Executando Gale {n_gale}")
     valor = amount * (2 ** n_gale)
     etapa = f"Gale {n_gale}"
-    order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, valor, etapa)
+    order = await tentar_ordem(isDemo, close_type, direction, symbol, valor, etapa)
     result = await aguardar_resultado(70)
 
     if result == "WIN":
@@ -195,7 +185,7 @@ async def aguardar_e_executar_entradas(data):
     isDemo = bot_options['is_demo']
 
     await aguardar_horario(entrada, "Entrada Principal")
-    order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
+    order = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
 
     result = await aguardar_resultado()
     if result == "WIN":
@@ -224,7 +214,7 @@ async def main():
     queue = await channel.declare_queue(exclusive=True)
     await queue.bind(exchange)
 
-    print("📡 Aguardando sinais da fila...")
+    print("📱 Aguardando sinais da fila...")
 
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
