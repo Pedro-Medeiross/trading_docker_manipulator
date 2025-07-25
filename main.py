@@ -110,9 +110,10 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
         env_vars['API_TOKEN'] = decoded_api_key
         print(f'API_TOKEN: {env_vars["API_TOKEN"]}')
     else:
-        password = base64.b64decode(user_brokerages.get('brokerage_password', '')).decode('utf-8')
+        user_password_encoded = user_brokerages.get("brokerage_password", "")
+        decoded_password = base64.b64decode(user_password_encoded).decode("utf-8")
         env_vars['BROKERAGE_USERNAME'] = user_brokerages.get('brokerage_username', '')
-        env_vars['BROKERAGE_PASSWORD'] = password
+        env_vars['BROKERAGE_PASSWORD'] = decoded_password
         print(f'BROKERAGE_USERNAME: {env_vars["BROKERAGE_USERNAME"]}')
         print(f'BROKERAGE_PASSWORD: {env_vars["BROKERAGE_PASSWORD"]}')
 
