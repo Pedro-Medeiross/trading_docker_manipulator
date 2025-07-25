@@ -42,7 +42,7 @@ def inverter_symbol(symbol: str) -> str:
     return symbol
 
 async def consultar_balance(account_type: str):
-    url = "http://localhost:3001/api/account/balance"
+    url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
 
     async with aiohttp.ClientSession() as session:
@@ -55,7 +55,7 @@ async def consultar_balance(account_type: str):
             return None
 
 async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol: str, amount: float):
-    url_buy = 'http://localhost:3001/api/trade/digital/buy'
+    url_buy = 'http://avalon_api:3001/api/trade/digital/buy'
     user_brokerages = await get_user_brokerages(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     EMAIL = user_brokerages['brokerage_username']
     PASSWORD = user_brokerages['brokerage_password']
