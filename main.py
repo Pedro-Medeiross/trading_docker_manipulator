@@ -70,7 +70,11 @@ def get_basic_credentials(credentials: HTTPBasicCredentials = Depends(security))
     return credentials.username
 
 @app.get("/start/{user_id}/{brokerage_id}")
-async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasicCredentials = Depends(get_basic_credentials)):
+async def start_container(
+    user_id: int,
+    brokerage_id: int,
+    credentials: HTTPBasicCredentials = Depends(get_basic_credentials)
+):
     if brokerage_id not in BROKERAGE_CONFIGS:
         return {"message": "Corretora não suportada."}
 
@@ -86,7 +90,6 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     if bot_options['stop_loss'] <= 0 or bot_options['stop_win'] <= 0 or bot_options['entry_price'] <= 0:
         return {'message': 'Configurações base faltando'}
 
-    # Verifica se corretora usa API Key ou Username/Password
     usa_api_key = config.get("auth_type") == "apikey"
 
     env_vars = {
@@ -104,19 +107,38 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     if usa_api_key:
         get_api_key = await api.get_api_key(user_id, brokerage_id)
         api_key = get_api_key.get('api_key')
-        if not api_key:
-            return {'message': 'api_key da corretora não cadastrada!'}
-        decoded_api_key = base64.b64decode(api_key).decode('utf-8')
-        env_vars['API_TOKEN'] = decoded_api_key
-        print(f'API_TOKEN: {env_vars["API_TOKEN"]}')
+
+        if api_key:
+            try:
+                decoded_api_key = base64.b64decode(api_key).decode('utf-8')
+                env_vars['API_TOKEN'] = decoded_api_key
+                print(f'✅ API_TOKEN decodificada: {decoded_api_key}')
+            except Exception as e:
+                print(f"⚠️ Erro ao decodificar api_key: {e}")
+                return {'message': 'Falha ao decodificar api_key'}
+        else:
+            print("ℹ️ Nenhuma API Key fornecida (não necessária para essa corretora)")
+
     else:
-        user_password_encoded = user_brokerages.get("brokerage_password", "")
-        decoded_password = base64.b64decode(user_password_encoded).decode("utf-8")
-        print(f'decoded{decoded_password}')
-        env_vars['BROKERAGE_USERNAME'] = user_brokerages.get('brokerage_username', '')
+        username = user_brokerages.get("brokerage_username") or ""
+        password_encoded = user_brokerages.get("brokerage_password")
+
+        decoded_password = ""
+        if password_encoded:
+            try:
+                decoded_password = base64.b64decode(password_encoded).decode("utf-8")
+                print(f'✅ Senha decodificada com sucesso')
+            except Exception as e:
+                print(f"⚠️ Erro ao decodificar senha: {e}")
+                return {'message': 'Falha ao decodificar senha da corretora'}
+        else:
+            print("ℹ️ Nenhuma senha fornecida (não necessária para essa corretora)")
+
+        env_vars['BROKERAGE_USERNAME'] = username
         env_vars['BROKERAGE_PASSWORD'] = decoded_password
-        print(f'BROKERAGE_USERNAME: {env_vars["BROKERAGE_USERNAME"]}')
-        print(f'BROKERAGE_PASSWORD: {env_vars["BROKERAGE_PASSWORD"]}')
+
+        print(f'BROKERAGE_USERNAME: {username}')
+        print(f'BROKERAGE_PASSWORD: {decoded_password}')
 
     container_name = f"bot_{user_id}_{brokerage_id}"
     containers = client.containers.list(all=True)
@@ -131,9 +153,16 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
                 return {'message': 'App iniciado!'}
 
     await api.update_status_bot(user_id, 1, brokerage_id)
-    client.containers.create(image=image_name, name=container_name, detach=True, environment=env_vars, network="trading_docker_manipulator_botnet")
+    client.containers.create(
+        image=image_name,
+        name=container_name,
+        detach=True,
+        environment=env_vars,
+        network="trading_docker_manipulator_botnet"
+    )
     client.containers.get(container_name).start()
     return {'message': 'Bot created and started'}
+
 
 
 @app.get("/stop/{user_id}/{brokerage_id}")
