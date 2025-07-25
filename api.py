@@ -54,3 +54,11 @@ async def reset_stop_values(user_id:int, brokerage_id: int):
             data = {'loss_value': loss_value, 'win_value': win_value}
             async with session.put(f'https://api.multitradingob.com/bot-options/admin/{user_id}/{brokerage_id}', json=data, headers=headers) as response:
                 return await response.json()
+
+
+async def get_user_brokerages(user_id: int, brokerage_id: int):
+    async with aiohttp.ClientSession() as session:
+        auth = aiohttp.BasicAuth(os.getenv('API_USER'), os.getenv('API_PASS'))
+        headers = {'Authorization': auth.encode()}
+        async with session.get(f'https://api.multitradingob.com/user-brokerages/admin/{user_id}/{brokerage_id}', headers=headers) as response:
+            return await response.json()
