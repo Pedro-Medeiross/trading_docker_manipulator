@@ -1,9 +1,8 @@
 FROM python:3.13.3-bullseye
 
-WORKDIR /app
-
-COPY polarium /app
+COPY polarium /app/polarium
+WORKDIR /app/polarium
 
 RUN pip install -r requirements.txt
 
-CMD ["python","-u","main.py"]
+CMD ["python", "-u", "main.py"]
