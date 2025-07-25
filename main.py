@@ -112,6 +112,7 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
     else:
         user_password_encoded = user_brokerages.get("brokerage_password", "")
         decoded_password = base64.b64decode(user_password_encoded).decode("utf-8")
+        print(f'decoded{decoded_password}')
         env_vars['BROKERAGE_USERNAME'] = user_brokerages.get('brokerage_username', '')
         env_vars['BROKERAGE_PASSWORD'] = decoded_password
         print(f'BROKERAGE_USERNAME: {env_vars["BROKERAGE_USERNAME"]}')
