@@ -85,6 +85,8 @@ async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol:
 
     headers = {"Content-Type": "application/json"}
 
+    print(f"📤 Enviando ordem para {symbol} ({api_direction}) | Valor: {amount} | Periodo: {close_type}")
+
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url_buy, json=payload, headers=headers) as response:
@@ -99,6 +101,7 @@ async def realizar_compra(isDemo: bool, close_type: str, direction: str, symbol:
                     else:
                         pnl = 0
 
+                    print(f"✅ Ordem enviada: ID {order_id}, PnL: {pnl}")
                     return {
                         "id": order_id,
                         "result": data.get("status", ""),
@@ -135,12 +138,15 @@ async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amoun
 
 async def aguardar_resultado(timeout=60):
     global resultado_global
+    print("⏳ Aguardando resultado do sinal...")
     for _ in range(timeout):
         if resultado_global in ["WIN", "LOSS"]:
             result = resultado_global
             resultado_global = None
+            print(f"🎯 Resultado recebido após execução: {result}")
             return result
         await asyncio.sleep(1)
+    print("⌛ Tempo esgotado aguardando resultado.")
     return None
 
 async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbol, amount):
@@ -151,9 +157,11 @@ async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbo
     result = await aguardar_resultado(70)
 
     if result == "WIN":
+        print(f"✅ WIN no {etapa}")
         await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status=f"WON NA {etapa.upper()}", pnl=order['pnl'])
     else:
+        print(f"❌ LOSS no {etapa}")
         await update_loss_value(user_id=USER_ID, loss_value=valor, brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="LOST", pnl=order['pnl'])
     await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
@@ -181,6 +189,8 @@ async def aguardar_e_executar_entradas(data):
     direction = data["direction"]
     symbol = data["symbol"]
 
+    print(f"\n🎯 Executando sinal: {symbol} | Direção: {direction} | Entrada: {entrada} | Expiração: {close_type}")
+
     bot_options = await get_bot_options(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
@@ -190,10 +200,12 @@ async def aguardar_e_executar_entradas(data):
 
     result = await aguardar_resultado()
     if result == "WIN":
+        print("✅ WIN na Entrada Principal")
         await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="WON", pnl=order['pnl'])
         await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     else:
+        print("❌ LOSS na Entrada Principal")
         if gale1:
             await aguardar_horario(gale1, "Gale 1")
             await executar_gale_com_timeout(1, isDemo, close_type, direction, symbol, amount)
@@ -204,32 +216,42 @@ async def aguardar_e_executar_entradas(data):
 async def main():
     global resultado_global, sinal_ativo
 
+    print("🚀 Iniciando conexão com RabbitMQ...")
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
+    print("✅ Conexão estabelecida com RabbitMQ")
+
     channel = await connection.channel()
     exchange = await channel.declare_exchange("avalon_signals", aio_pika.ExchangeType.FANOUT)
     queue = await channel.declare_queue(exclusive=True)
     await queue.bind(exchange)
 
-    print("✅ Aguardando sinais...")
+    print("📡 Aguardando sinais da fila...")
 
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             async with message.process():
-                data = json.loads(message.body.decode())
+                raw = message.body.decode()
+                print(f"\n📨 Mensagem bruta recebida: {raw}")
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError as e:
+                    print("❌ Erro ao decodificar JSON:", e)
+                    continue
+
                 tipo = data.get("type")
+                print(f"🔍 Tipo de mensagem: {tipo}")
 
                 if tipo == "result":
                     resultado_global = data.get("result")
                     print(f"📊 Resultado recebido: {resultado_global}")
 
                 elif tipo == "entry":
-                    print("📥 Sinal recebido:", data)
+                    print("📥 Sinal de entrada recebido:", data)
                     await aguardar_e_executar_entradas(data)
 
                 elif tipo == "gale_trigger":
                     gale = data.get("gale")
                     print(f"🔔 Trigger de GALE {gale} recebido (mas usando fallback de timeout)")
-                    # Ignorado, pois fallback por timeout é padrão agora
 
 if __name__ == "__main__":
     asyncio.run(main())
