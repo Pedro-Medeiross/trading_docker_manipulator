@@ -109,8 +109,9 @@ async def start_container(user_id: int, brokerage_id: int, credentials: HTTPBasi
         decoded_api_key = base64.b64decode(api_key).decode('utf-8')
         env_vars['API_TOKEN'] = decoded_api_key
     else:
+        password = base64.b64decode(user_brokerages.get('brokerage_password', '')).decode('utf-8')
         env_vars['BROKERAGE_USERNAME'] = user_brokerages.get('brokerage_username', '')
-        env_vars['BROKERAGE_PASSWORD'] = user_brokerages.get('brokerage_password', '')
+        env_vars['BROKERAGE_PASSWORD'] = password
 
     container_name = f"bot_{user_id}_{brokerage_id}"
     containers = client.containers.list(all=True)
