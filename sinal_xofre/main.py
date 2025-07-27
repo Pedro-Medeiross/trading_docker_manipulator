@@ -80,7 +80,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_message))
+    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.GROUPS, handle_message))
     app.run_polling()
 
 if __name__ == "__main__":

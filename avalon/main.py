@@ -129,7 +129,7 @@ async def aguardar_resultado(timeout=60):
     global resultado_global
     print("⏳ Aguardando resultado do sinal...")
     for _ in range(timeout):
-        if resultado_global in ["WIN", "LOSS"]:
+        if resultado_global in ["WIN", "LOSS", "GALE1", "GALE2"]:
             result = resultado_global
             resultado_global = None
             print(f"🎯 Resultado recebido após execução: {result}")
@@ -143,9 +143,14 @@ async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbo
     valor = amount * (2 ** n_gale)
     etapa = f"Gale {n_gale}"
     order = await tentar_ordem(isDemo, close_type, direction, symbol, valor, etapa)
+
+    if not order:
+        print(f"⚠️ Ordem da {etapa} não foi executada corretamente.")
+        return
+
     result = await aguardar_resultado(70)
 
-    if result == "WIN":
+    if result == "WIN" or result == f"GALE{n_gale}":
         print(f"✅ WIN no {etapa}")
         await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status=f"WON NA {etapa.upper()}", pnl=order['pnl'])
@@ -153,6 +158,7 @@ async def executar_gale_com_timeout(n_gale, isDemo, close_type, direction, symbo
         print(f"❌ LOSS no {etapa}")
         await update_loss_value(user_id=USER_ID, loss_value=valor, brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="LOST", pnl=order['pnl'])
+
     await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
 
 async def aguardar_horario(horario: str, etapa: str):
@@ -167,7 +173,7 @@ async def aguardar_horario(horario: str, etapa: str):
         await asyncio.sleep(5)
 
 async def aguardar_e_executar_entradas(data):
-    global sinal_ativo, proxima_gale
+    global sinal_ativo, proxima_gale, resultado_global
     sinal_ativo = data
     proxima_gale = 1
 
@@ -187,20 +193,29 @@ async def aguardar_e_executar_entradas(data):
     await aguardar_horario(entrada, "Entrada Principal")
     order = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
 
+    if not order:
+        print("❌ Falha na entrada principal.")
+        return
+
     result = await aguardar_resultado()
     if result == "WIN":
         print("✅ WIN na Entrada Principal")
         await update_win_value(user_id=USER_ID, win_value=order['pnl'], brokerage_id=BROKERAGE_ID)
         await update_trade_order_info(order_id=order['id'], user_id=USER_ID, status="WON", pnl=order['pnl'])
         await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-    else:
-        print("❌ LOSS na Entrada Principal")
-        if gale1:
-            await aguardar_horario(gale1, "Gale 1")
-            await executar_gale_com_timeout(1, isDemo, close_type, direction, symbol, amount)
-        if gale2:
-            await aguardar_horario(gale2, "Gale 2")
-            await executar_gale_com_timeout(2, isDemo, close_type, direction, symbol, amount)
+        return
+
+    print("❌ LOSS na Entrada Principal")
+
+    if gale1:
+        await aguardar_horario(gale1, "Gale 1")
+        await executar_gale_com_timeout(1, isDemo, close_type, direction, symbol, amount)
+        if resultado_global == "WIN" or resultado_global == "GALE1":
+            return
+
+    if gale2:
+        await aguardar_horario(gale2, "Gale 2")
+        await executar_gale_com_timeout(2, isDemo, close_type, direction, symbol, amount)
 
 async def main():
     global resultado_global, sinal_ativo

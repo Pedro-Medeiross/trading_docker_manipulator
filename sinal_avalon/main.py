@@ -35,48 +35,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text.strip()
 
-    # 🔍 Debug: mensagem recebida
     print("\n📥 Mensagem recebida:")
     print(f"🧑‍💬 De: {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
     print(f"📝 Texto: {text}")
 
-    # 🎯 Caso 1: Sinal de entrada
-    if "✅ ENTRADA CONFIRMADA ✅" in text:
-        ativo_match = re.search(r"Ativo:\s*(.+)", text)
-        expiracao_match = re.search(r"Expiração:\s*(.+)", text)
-        entrada_match = re.search(r"Entrada:\s*(\d{2}:\d{2})", text)
-        direcao_match = re.search(r"Direção:\s*Entrada\s+em\s+(\w+)", text)
-        gales_match = re.findall(r"\dº GALE: TERMINA EM: (\d{2}:\d{2})", text)
+    # 🎯 Caso 1: Entrada confirmada
+    if "✅ <b>ENTRADA CONFIRMADA</b> ✅" in text:
+        ativo_match = re.search(r"<b>Ativo:</b>\s*(.+)", text)
+        expiracao_match = re.search(r"<b>Expiração:</b>\s*M(\d+)", text)
+        direcao_match = re.search(r"<b>Direção:</b>\s*(\w+)", text)
+        entrada_match = re.search(r"<b>Entrada:</b>\s*(\d{2}:\d{2})", text)
+        gales_match = re.findall(r"(\d)º GALE: TERMINA EM: (\d{2}:\d{2})", text)
 
         ativo = ativo_match.group(1).strip() if ativo_match else None
-
         if ativo and '/' in ativo:
-            partes = ativo.split('/')
-            ativo = ''.join(partes)
+            ativo = ''.join(ativo.split('/'))
 
-        expiracao = expiracao_match.group(1).strip() if expiracao_match else None
+        expiracao = f"0{expiracao_match.group(1)}:00" if expiracao_match else None
         entrada = entrada_match.group(1).strip() if entrada_match else None
-        direcao = direcao_match.group(1).strip() if direcao_match else None
-        gale1 = gales_match[0] if len(gales_match) > 0 else None
-        gale2 = gales_match[1] if len(gales_match) > 1 else None
+        direcao = direcao_match.group(1).strip().lower() if direcao_match else None
+        direcao = "BUY" if direcao == "call" else "SELL" if direcao == "put" else None
 
-        # Debug dos valores extraídos
-        print("🔎 Match ativo:", ativo)
-        print("🔎 Match expiracao:", expiracao)
-        print("🔎 Match entrada:", entrada)
-        print("🔎 Match direcao:", direcao)
-        print("🔎 Match gale1:", gale1)
-        print("🔎 Match gale2:", gale2)
-
-        if expiracao == "M1":
-            expiracao = "01:00"
-        elif expiracao == "M5":
-            expiracao = "05:00"
-
-        if direcao and direcao.lower() == "call":
-            direcao = "BUY"
-        elif direcao and direcao.lower() == "put":
-            direcao = "SELL"
+        gale1 = gale2 = None
+        for g in gales_match:
+            if g[0] == '1':
+                gale1 = g[1]
+            elif g[0] == '2':
+                gale2 = g[1]
 
         signal = {
             "type": "entry",
@@ -91,34 +76,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("📤 Publicando sinal de entrada:", signal)
         await send_to_queue(signal)
 
-    # 🎯 Caso 2: Resultado (WIN ou LOSS)
-    elif text.upper() in ["WIN", "LOSS"]:
-        resultado = text.upper()
-        print(f"🏁 Resultado detectado: {resultado}")
+    # 🎯 Caso 2: Resultado GAIN normal
+    elif "<b>GAIN</b> ✅" in text:
         result_payload = {
             "type": "result",
-            "result": resultado
+            "result": "WIN"
         }
-        print("📤 Publicando resultado:", result_payload)
+        print("📤 Publicando resultado WIN:", result_payload)
         await send_to_queue(result_payload)
 
-    # 🎯 Caso 3: Detecção de gale
-    elif text.startswith("🔄 Fazer gale"):
-        print("♻️ Mensagem de gale detectada")
-        gale_match = re.search(r"Fazer gale\s+(\d+)", text)
-        if gale_match:
-            gale_count = int(gale_match.group(1))
-            print(f"🔁 GALE identificado: {gale_count}")
-            gale_payload = {
-                "type": "gale_trigger",
-                "gale": gale_count
-            }
-            print("📤 Publicando trigger de gale:", gale_payload)
-            await send_to_queue(gale_payload)
+    # 🎯 Caso 3: Resultado LOSS
+    elif "<b>LOSS</b> ❌" in text:
+        result_payload = {
+            "type": "result",
+            "result": "LOSS"
+        }
+        print("📤 Publicando resultado LOSS:", result_payload)
+        await send_to_queue(result_payload)
+
+    # 🎯 Caso 4: Resultado GAIN Martingale 1 ou 2
+    elif match := re.search(r"<b>GAIN Martingale (\d)</b> ✅", text):
+        gale_number = int(match.group(1))
+        result_payload = {
+            "type": "result",
+            "result": f"GALE{gale_number}"
+        }
+        print(f"📤 Publicando resultado WIN na GALE {gale_number}:", result_payload)
+        await send_to_queue(result_payload)
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, handle_message))
+    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.GROUPS, handle_message))
     print("🤖 Bot iniciado e aguardando mensagens...")
     app.run_polling()
 
