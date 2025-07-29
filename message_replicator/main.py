@@ -1,20 +1,33 @@
+from telethon import TelegramClient, events
 import os
 from dotenv import load_dotenv
-from telethon import TelegramClient, events
 
+# Carrega o .env dentro do container
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
+def get_env_var(key, cast_func=str):
+    val = os.getenv(key)
+    if val is None:
+        raise RuntimeError(f"❌ Variável de ambiente {key} não encontrada!")
+    return cast_func(val)
 
-FROM_CHAT_AVALON = int(os.getenv("FROM_CHAT_AVALON"))
-TO_CHAT_AVALON = int(os.getenv("TO_CHAT_AVALON"))
+# Agora use as variáveis de forma segura:
+API_ID = get_env_var("API_ID", int)
+API_HASH = get_env_var("API_HASH")
 
-FROM_CHAT_POLARIUM = int(os.getenv("FROM_CHAT_POLARIUM"))
-TO_CHAT_POLARIUM = int(os.getenv("TO_CHAT_POLARIUM"))
+FROM_CHAT_AVALON = get_env_var("FROM_CHAT_AVALON", int)
+TO_CHAT_AVALON = get_env_var("TO_CHAT_AVALON", int)
 
-FROM_CHAT_XOFRE = int(os.getenv("FROM_CHAT_XOFRE"))
-TO_CHAT_XOFRE = int(os.getenv("TO_CHAT_XOFRE"))
+FROM_CHAT_POLARIUM = get_env_var("FROM_CHAT_POLARIUM", int)
+TO_CHAT_POLARIUM = get_env_var("TO_CHAT_POLARIUM", int)
+
+FROM_CHAT_XOFRE = get_env_var("FROM_CHAT_XOFRE", int)
+TO_CHAT_XOFRE = get_env_var("TO_CHAT_XOFRE", int)
+
+print(f'api_id: {API_ID} api_hash: {API_HASH}')
+print(f'chatso_avalon: {FROM_CHAT_AVALON} chatso_avalon: {TO_CHAT_AVALON}')
+print(f'chatso_polarium: {FROM_CHAT_POLARIUM} chatso_polarium: {TO_CHAT_POLARIUM}')
+print(f'chatso_xofre: {FROM_CHAT_XOFRE} chatso_xofre: {TO_CHAT_XOFRE}')
 
 client = TelegramClient('user_session', API_ID, API_HASH)
 
