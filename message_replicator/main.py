@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 # Carrega o .env dentro do container
 load_dotenv()
 
+print("DEBUG - API_ID:", os.getenv("API_ID"))
+print("DEBUG - API_HASH:", os.getenv("API_HASH"))
+
 def get_env_var(key, cast_func=str):
     val = os.getenv(key)
     if val is None:
