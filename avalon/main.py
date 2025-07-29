@@ -129,6 +129,7 @@ async def aguardar_e_executar_entradas(data):
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
 
+    # ENTRADA PRINCIPAL
     etapa_atual = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
     ordem_principal = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
@@ -142,12 +143,11 @@ async def aguardar_e_executar_entradas(data):
         await update_trade_order_info(ordem_principal["id"], USER_ID, "WON", ordem_principal["pnl"])
         await verify_stop_values(USER_ID, BROKERAGE_ID)
         return
-    else:
-        print("❌ LOSS na entrada principal. Iniciando GALE 1")
+    elif res == "GALE 1":
+        print("➡️ Iniciando GALE 1")
         await update_loss_value(USER_ID, amount, BROKERAGE_ID)
         await update_trade_order_info(ordem_principal["id"], USER_ID, "LOST", ordem_principal["pnl"])
 
-    if gale1:
         etapa_atual = "gale1"
         await aguardar_horario(gale1, "Gale 1")
         ordem_gale1 = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
@@ -161,28 +161,27 @@ async def aguardar_e_executar_entradas(data):
             await update_trade_order_info(ordem_gale1["id"], USER_ID, "WON NA GALE 1", ordem_gale1["pnl"])
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
-        else:
-            print("❌ LOSS na GALE 1. Iniciando GALE 2")
+        elif res == "GALE 2":
+            print("➡️ Iniciando GALE 2")
             await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
             await update_trade_order_info(ordem_gale1["id"], USER_ID, "LOST", ordem_gale1["pnl"])
 
-    if gale2:
-        etapa_atual = "gale2"
-        await aguardar_horario(gale2, "Gale 2")
-        ordem_gale2 = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
-        if not ordem_gale2:
-            return
+            etapa_atual = "gale2"
+            await aguardar_horario(gale2, "Gale 2")
+            ordem_gale2 = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
+            if not ordem_gale2:
+                return
 
-        res = await aguardar_resultado_por_evento()
-        if res == "WIN":
-            print("✅ WIN na GALE 2")
-            await update_win_value(USER_ID, ordem_gale2["pnl"], BROKERAGE_ID)
-            await update_trade_order_info(ordem_gale2["id"], USER_ID, "WON NA GALE 2", ordem_gale2["pnl"])
-        else:
-            print("❌ LOSS na GALE 2")
-            await update_loss_value(USER_ID, amount * 4, BROKERAGE_ID)
-            await update_trade_order_info(ordem_gale2["id"], USER_ID, "LOST", ordem_gale2["pnl"])
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
+            res = await aguardar_resultado_por_evento()
+            if res == "WIN":
+                print("✅ WIN na GALE 2")
+                await update_win_value(USER_ID, ordem_gale2["pnl"], BROKERAGE_ID)
+                await update_trade_order_info(ordem_gale2["id"], USER_ID, "WON NA GALE 2", ordem_gale2["pnl"])
+            else:
+                print("❌ LOSS na GALE 2")
+                await update_loss_value(USER_ID, amount * 4, BROKERAGE_ID)
+                await update_trade_order_info(ordem_gale2["id"], USER_ID, "LOST", ordem_gale2["pnl"])
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
 
 
 async def main():
