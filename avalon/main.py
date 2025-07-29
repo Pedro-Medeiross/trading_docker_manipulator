@@ -67,6 +67,7 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
 
     headers = {"Content-Type": "application/json"}
     balance_before = await consultar_balance(account_type)
+    print(f"💰 Saldo antes da operação: {balance_before:.2f}" if balance_before is not None else "⚠️ Saldo antes indisponível")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -75,7 +76,14 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
                 if response.status == 201:
                     await asyncio.sleep(2)
                     balance_after = await consultar_balance(account_type)
-                    pnl = round(balance_after - balance_before, 2) if balance_before and balance_after else 0
+                    print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
+
+                    if balance_before is not None and balance_after is not None:
+                        pnl = round(balance_after - balance_before, 2)
+                    else:
+                        pnl = 0
+
+                    print(f"📈 PNL calculado: {pnl:.2f}")
                     return {
                         "id": trade_id,
                         "result": data.get("status", ""),
@@ -143,7 +151,7 @@ async def aguardar_e_executar_entradas(data):
         resultado = await aguardar_resultado_ou_gale()
 
         if resultado == "WIN":
-            print(f"✅ WIN na {etapa_em_andamento.upper()}")
+            print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
             status = "WON" if etapa_em_andamento == "entry" else f"WON NA {etapa_em_andamento.upper()}"
             await update_trade_order_info(ordem["id"], USER_ID, status, ordem["pnl"])
@@ -151,8 +159,9 @@ async def aguardar_e_executar_entradas(data):
             return
 
         elif resultado == "LOSS":
-            print(f"❌ LOSS na {etapa_em_andamento.upper()}")
-            await update_loss_value(USER_ID, amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4), BROKERAGE_ID)
+            print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
+            loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
+            await update_loss_value(USER_ID, loss_amount, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
