@@ -34,22 +34,29 @@ etapa_atual = None
 etapa_em_andamento = None
 
 
-async def consultar_balance(account_type: str):
+async def consultar_balance(isDemo: bool):
     url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as response:
-            if response.status == 200:
-                data = await response.json()
-                for wallet in data.get("Wallets", []):
-                    if wallet["type"] == account_type:
-                        return wallet["amount"]
+    account_type = "demo" if isDemo else "real"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    print(f"🔍 Resposta da API de saldo: {data}")
+                    for wallet in data.get("Wallets", []):
+                        if wallet["type"] == account_type:
+                            return wallet["amount"]
+                    print(f"⚠️ Tipo de carteira '{account_type}' não encontrado na resposta.")
+                else:
+                    print(f"❌ Erro ao consultar saldo: Status {response.status}")
+    except Exception as e:
+        print(f"❌ Erro de conexão com API de saldo: {e}")
     return None
 
 
 async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id):
     url = 'http://avalon_api:3001/api/trade/digital/buy'
-    account_type = "demo" if isDemo else "real"
     api_direction = "CALL" if direction == "BUY" else "PUT"
 
     minutes, seconds = map(int, close_type.split(":"))
@@ -61,12 +68,12 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
         "assetName": symbol,
         "operationValue": float(amount),
         "direction": api_direction,
-        "account_type": account_type,
+        "account_type": "demo" if isDemo else "real",
         "period": period_seconds
     }
 
     headers = {"Content-Type": "application/json"}
-    balance_before = await consultar_balance(account_type)
+    balance_before = await consultar_balance(isDemo)
     print(f"💰 Saldo antes da operação: {balance_before:.2f}" if balance_before is not None else "⚠️ Saldo antes indisponível")
 
     async with aiohttp.ClientSession() as session:
@@ -75,7 +82,7 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
                 data = await response.json()
                 if response.status == 201:
                     await asyncio.sleep(2)
-                    balance_after = await consultar_balance(account_type)
+                    balance_after = await consultar_balance(isDemo)
                     print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
 
                     if balance_before is not None and balance_after is not None:
@@ -139,7 +146,6 @@ async def aguardar_e_executar_entradas(data):
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
 
-    # Entrada principal
     etapa_atual = "entry"
     etapa_em_andamento = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
@@ -149,6 +155,10 @@ async def aguardar_e_executar_entradas(data):
 
     while True:
         resultado = await aguardar_resultado_ou_gale()
+
+        if resultado is None:
+            print("⚠️ Resultado vazio recebido, ignorando...")
+            continue
 
         if resultado == "WIN":
             print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
