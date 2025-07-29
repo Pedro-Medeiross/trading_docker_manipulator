@@ -37,19 +37,25 @@ etapa_em_andamento = None
 async def consultar_balance(isDemo: bool):
     url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
+    payload = {
+        "email": BROKERAGE_USERNAME,
+        "password": BROKERAGE_PASSWORD
+    }
     account_type = "demo" if isDemo else "real"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
+            async with session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     print(f"🔍 Resposta da API de saldo: {data}")
-                    for wallet in data.get("Wallets", []):
+                    for wallet in data.get("balances", []):
                         if wallet["type"] == account_type:
                             return wallet["amount"]
                     print(f"⚠️ Tipo de carteira '{account_type}' não encontrado na resposta.")
                 else:
                     print(f"❌ Erro ao consultar saldo: Status {response.status}")
+                    text = await response.text()
+                    print(f"📄 Corpo da resposta: {text}")
     except Exception as e:
         print(f"❌ Erro de conexão com API de saldo: {e}")
     return None
