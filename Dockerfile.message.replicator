@@ -1,11 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.11-slim  # ou 3.13.3-bullseye se preferir
 
 WORKDIR /app
 
-COPY requirements.txt .
-COPY main.py .
-COPY .env.messager .env    # <- copia o .env específico com o nome padrão
+COPY message_replicator /app
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
