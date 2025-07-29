@@ -68,7 +68,7 @@ services:
 
 volumes:
   rabbitmq_data:
-  telethon_sessions:  # volume para persistência da sessão do Telethon
+  telethon_sessions:
 
 networks:
   botnet:
