@@ -28,10 +28,9 @@ RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 BROKERAGE_USERNAME = os.getenv("BROKERAGE_USERNAME")
 BROKERAGE_PASSWORD = os.getenv("BROKERAGE_PASSWORD")
 
-# Variáveis globais
 resultado_global = None
-proxima_etapa = asyncio.Event()
 etapa_atual = None
+proxima_etapa = asyncio.Event()
 
 
 async def consultar_balance(account_type: str):
@@ -51,7 +50,6 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
     url = 'http://avalon_api:3001/api/trade/digital/buy'
     account_type = "demo" if isDemo else "real"
     api_direction = "CALL" if direction == "BUY" else "PUT"
-
     minutes, seconds = map(int, close_type.split(":"))
     period_seconds = minutes * 60 + seconds
 
@@ -88,6 +86,7 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
 
 
 async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
+    print(f"🟡 {etapa.upper()} - Enviando ordem de {amount} em {symbol} ({direction})")
     trade_id = str(uuid.uuid4())
     await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
                                   quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
@@ -97,9 +96,11 @@ async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
 async def aguardar_horario(horario, etapa):
     tz = pytz.timezone("America/Sao_Paulo")
     target = datetime.strptime(horario, "%H:%M").time()
+    print(f"⏳ Aguardando horário de {etapa.upper()}: {horario}")
     while True:
         now = datetime.now(tz).time()
         if now >= target:
+            print(f"⏰ Executando {etapa.upper()}")
             return
         await asyncio.sleep(5)
 
@@ -110,6 +111,7 @@ async def aguardar_resultado_por_evento():
     proxima_etapa.clear()
     res = resultado_global
     resultado_global = None
+    print(f"📬 Resultado recebido: {res}")
     return res
 
 
@@ -127,7 +129,6 @@ async def aguardar_e_executar_entradas(data):
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
 
-    # ENTRADA PRINCIPAL
     etapa_atual = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
     ordem_principal = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
@@ -136,15 +137,16 @@ async def aguardar_e_executar_entradas(data):
 
     res = await aguardar_resultado_por_evento()
     if res == "WIN":
+        print("✅ WIN na entrada principal")
         await update_win_value(USER_ID, ordem_principal["pnl"], BROKERAGE_ID)
         await update_trade_order_info(ordem_principal["id"], USER_ID, "WON", ordem_principal["pnl"])
         await verify_stop_values(USER_ID, BROKERAGE_ID)
         return
     else:
+        print("❌ LOSS na entrada principal. Iniciando GALE 1")
         await update_loss_value(USER_ID, amount, BROKERAGE_ID)
         await update_trade_order_info(ordem_principal["id"], USER_ID, "LOST", ordem_principal["pnl"])
 
-    # GALE 1
     if gale1:
         etapa_atual = "gale1"
         await aguardar_horario(gale1, "Gale 1")
@@ -154,15 +156,16 @@ async def aguardar_e_executar_entradas(data):
 
         res = await aguardar_resultado_por_evento()
         if res == "WIN":
+            print("✅ WIN na GALE 1")
             await update_win_value(USER_ID, ordem_gale1["pnl"], BROKERAGE_ID)
             await update_trade_order_info(ordem_gale1["id"], USER_ID, "WON NA GALE 1", ordem_gale1["pnl"])
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
         else:
+            print("❌ LOSS na GALE 1. Iniciando GALE 2")
             await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
             await update_trade_order_info(ordem_gale1["id"], USER_ID, "LOST", ordem_gale1["pnl"])
 
-    # GALE 2
     if gale2:
         etapa_atual = "gale2"
         await aguardar_horario(gale2, "Gale 2")
@@ -172,24 +175,25 @@ async def aguardar_e_executar_entradas(data):
 
         res = await aguardar_resultado_por_evento()
         if res == "WIN":
+            print("✅ WIN na GALE 2")
             await update_win_value(USER_ID, ordem_gale2["pnl"], BROKERAGE_ID)
             await update_trade_order_info(ordem_gale2["id"], USER_ID, "WON NA GALE 2", ordem_gale2["pnl"])
         else:
+            print("❌ LOSS na GALE 2")
             await update_loss_value(USER_ID, amount * 4, BROKERAGE_ID)
             await update_trade_order_info(ordem_gale2["id"], USER_ID, "LOST", ordem_gale2["pnl"])
         await verify_stop_values(USER_ID, BROKERAGE_ID)
 
 
 async def main():
-    global resultado_global, proxima_etapa, etapa_atual
-
+    global resultado_global, etapa_atual
     print("🔌 Conectando ao RabbitMQ...")
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
     exchange = await channel.declare_exchange("avalon_signals", aio_pika.ExchangeType.FANOUT)
     queue = await channel.declare_queue(exclusive=True)
     await queue.bind(exchange)
-    print("✅ Conectado e escutando mensagens...")
+    print("✅ Conectado ao RabbitMQ e aguardando sinais...")
 
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
@@ -202,17 +206,12 @@ async def main():
                         resultado_global = data.get("result")
                         proxima_etapa.set()
 
-                    elif tipo == "gale":
-                        step = data.get("step")
-                        if (step == 1 and etapa_atual == "gale1") or (step == 2 and etapa_atual == "gale2"):
-                            # apenas permitir avanço se for a etapa correta
-                            continue
-
                     elif tipo == "entry":
+                        print("📨 Novo sinal de entrada recebido")
                         asyncio.create_task(aguardar_e_executar_entradas(data))
 
                 except Exception as e:
-                    print(f"Erro ao processar mensagem: {e}")
+                    print(f"❌ Erro ao processar mensagem: {e}")
 
 
 if __name__ == "__main__":
