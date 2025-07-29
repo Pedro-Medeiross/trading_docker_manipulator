@@ -28,12 +28,14 @@ RABBITMQ_URL = f"amqp://{user}:{password}@{host}:5672/"
 BROKERAGE_USERNAME = os.getenv("BROKERAGE_USERNAME")
 BROKERAGE_PASSWORD = os.getenv("BROKERAGE_PASSWORD")
 
+# Variáveis globais
 resultado_global = None
-sinal_ativo = None
+proxima_etapa = asyncio.Event()
+etapa_atual = None
 
 
 async def consultar_balance(account_type: str):
-    url = "http://avalon_api:3001/api/account/balance"
+    url = "http://polarium_api:3002/api/account/balance"
     headers = {"Content-Type": "application/json"}
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as response:
@@ -46,7 +48,7 @@ async def consultar_balance(account_type: str):
 
 
 async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id):
-    url = 'http://avalon_api:3001/api/trade/digital/buy'
+    url = 'http://polarium_api:3002/api/trade/digital/buy'
     account_type = "demo" if isDemo else "real"
     api_direction = "CALL" if direction == "BUY" else "PUT"
 
@@ -102,19 +104,17 @@ async def aguardar_horario(horario, etapa):
         await asyncio.sleep(5)
 
 
-async def aguardar_resultado(timeout=70):
-    global resultado_global
-    for _ in range(timeout):
-        if resultado_global in ["WIN", "LOSS"]:
-            res = resultado_global
-            resultado_global = None
-            return res
-        await asyncio.sleep(1)
-    return None
+async def aguardar_resultado_por_evento():
+    global resultado_global, proxima_etapa
+    await proxima_etapa.wait()
+    proxima_etapa.clear()
+    res = resultado_global
+    resultado_global = None
+    return res
 
 
 async def aguardar_e_executar_entradas(data):
-    global resultado_global
+    global resultado_global, etapa_atual
 
     symbol = data["symbol"]
     direction = data["direction"]
@@ -128,12 +128,13 @@ async def aguardar_e_executar_entradas(data):
     isDemo = bot_options['is_demo']
 
     # ENTRADA PRINCIPAL
+    etapa_atual = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
     ordem_principal = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
     if not ordem_principal:
         return
 
-    res = await aguardar_resultado(timeout=70 if gale1 else 180)
+    res = await aguardar_resultado_por_evento()
     if res == "WIN":
         await update_win_value(USER_ID, ordem_principal["pnl"], BROKERAGE_ID)
         await update_trade_order_info(ordem_principal["id"], USER_ID, "WON", ordem_principal["pnl"])
@@ -145,12 +146,13 @@ async def aguardar_e_executar_entradas(data):
 
     # GALE 1
     if gale1:
+        etapa_atual = "gale1"
         await aguardar_horario(gale1, "Gale 1")
         ordem_gale1 = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
         if not ordem_gale1:
             return
 
-        res = await aguardar_resultado(timeout=70 if gale2 else 180)
+        res = await aguardar_resultado_por_evento()
         if res == "WIN":
             await update_win_value(USER_ID, ordem_gale1["pnl"], BROKERAGE_ID)
             await update_trade_order_info(ordem_gale1["id"], USER_ID, "WON NA GALE 1", ordem_gale1["pnl"])
@@ -162,12 +164,13 @@ async def aguardar_e_executar_entradas(data):
 
     # GALE 2
     if gale2:
+        etapa_atual = "gale2"
         await aguardar_horario(gale2, "Gale 2")
         ordem_gale2 = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
         if not ordem_gale2:
             return
 
-        res = await aguardar_resultado(timeout=90)
+        res = await aguardar_resultado_por_evento()
         if res == "WIN":
             await update_win_value(USER_ID, ordem_gale2["pnl"], BROKERAGE_ID)
             await update_trade_order_info(ordem_gale2["id"], USER_ID, "WON NA GALE 2", ordem_gale2["pnl"])
@@ -178,7 +181,8 @@ async def aguardar_e_executar_entradas(data):
 
 
 async def main():
-    global resultado_global
+    global resultado_global, proxima_etapa, etapa_atual
+
     print("🔌 Conectando ao RabbitMQ...")
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
@@ -193,10 +197,20 @@ async def main():
                 try:
                     data = json.loads(message.body.decode())
                     tipo = data.get("type")
+
                     if tipo == "result":
                         resultado_global = data.get("result")
+                        proxima_etapa.set()
+
+                    elif tipo == "gale":
+                        step = data.get("step")
+                        if (step == 1 and etapa_atual == "gale1") or (step == 2 and etapa_atual == "gale2"):
+                            # apenas permitir avanço se for a etapa correta
+                            continue
+
                     elif tipo == "entry":
-                        await aguardar_e_executar_entradas(data)
+                        asyncio.create_task(aguardar_e_executar_entradas(data))
+
                 except Exception as e:
                     print(f"Erro ao processar mensagem: {e}")
 

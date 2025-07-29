@@ -54,8 +54,21 @@ services:
     networks:
       - botnet
 
+  message_replicator:
+    build:
+      context: .
+      dockerfile: Dockerfile.message.replicator
+    container_name: telegram_message_replicator
+    volumes:
+      - telethon_sessions:/app
+    networks:
+      - botnet
+    stdin_open: true
+    tty: true
+
 volumes:
   rabbitmq_data:
+  telethon_sessions:  # volume para persistência da sessão do Telethon
 
 networks:
   botnet:

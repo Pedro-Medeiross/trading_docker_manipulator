@@ -16,7 +16,7 @@ async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
 
-    exchange = await channel.declare_exchange("avalon_signals", aio_pika.ExchangeType.FANOUT)
+    exchange = await channel.declare_exchange("polarium_signals", aio_pika.ExchangeType.FANOUT)
 
     await exchange.publish(
         aio_pika.Message(
