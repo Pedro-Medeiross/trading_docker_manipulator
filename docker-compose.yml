@@ -61,6 +61,8 @@ services:
     container_name: telegram_message_replicator
     volumes:
       - telethon_sessions:/app
+    env_file:
+      - .env.messager
     networks:
       - botnet
     stdin_open: true
