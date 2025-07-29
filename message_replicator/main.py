@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 # Carrega o .env dentro do container
-load_dotenv()
+#load_dotenv()
 
 print("DEBUG - API_ID:", os.getenv("API_ID"))
 print("DEBUG - API_HASH:", os.getenv("API_HASH"))
