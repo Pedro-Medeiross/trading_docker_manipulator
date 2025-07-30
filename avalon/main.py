@@ -134,14 +134,25 @@ async def aguardar_resultado_ou_gale():
 
 
 async def calcular_pnl(ordem, isDemo):
-    # Adiciona delay para garantir atualização do saldo pela corretora
-    await asyncio.sleep(5)
-    balance_after = await consultar_balance(isDemo)
-    print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
-    if ordem["balance_before"] is not None and balance_after is not None:
-        pnl = round(balance_after - ordem["balance_before"], 2)
+    global resultado_global
+
+    # Polling em caso de WIN até o saldo aumentar
+    if resultado_global == "WIN":
+        print("⏳ Esperando crédito do lucro no saldo (WIN)...")
+        tempo_max = 20
+        tempo = 0
+        while tempo < tempo_max:
+            balance_after = await consultar_balance(isDemo)
+            if balance_after > ordem["balance_before"]:
+                break
+            await asyncio.sleep(2)
+            tempo += 2
     else:
-        pnl = 0
+        await asyncio.sleep(1)
+        balance_after = await consultar_balance(isDemo)
+
+    print(f"💰 Saldo após a operação: {balance_after:.2f}")
+    pnl = round(balance_after - ordem["balance_before"], 2)
     print(f"📈 PNL calculado: {pnl:.2f}")
     ordem["pnl"] = pnl
     return pnl
