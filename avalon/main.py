@@ -137,28 +137,38 @@ async def calcular_pnl(ordem, isDemo):
     global resultado_global
 
     balance_before = ordem["balance_before"]
-    timeout = 30
+    timeout = 45
     elapsed = 0
     balance_after = await consultar_balance(isDemo)
 
+    print("\n================ DEBUG PNL ==================")
+    print(f"Resultado recebido: {resultado_global}")
+    print(f"Saldo antes da operação: {balance_before:.2f}")
+    print(f"Saldo após 1ª consulta pós-operação: {balance_after:.2f}")
+
     if resultado_global == "WIN":
-        print("⏳ Aguardando crédito do lucro (WIN)...")
+        print("⏳ Esperando saldo aumentar (WIN)...")
         while balance_after <= balance_before and elapsed < timeout:
+            print(f"🔄 {elapsed}s: saldo ainda {balance_after:.2f}, esperando > {balance_before:.2f}")
             await asyncio.sleep(2)
             elapsed += 2
             balance_after = await consultar_balance(isDemo)
 
     elif resultado_global in ["LOSS", "GALE 1", "GALE 2"]:
-        print("⏳ Aguardando débito da perda...")
+        print("⏳ Esperando saldo diminuir (perda)...")
         while balance_after == balance_before and elapsed < timeout:
+            print(f"🔄 {elapsed}s: saldo ainda {balance_after:.2f}, esperando mudança")
             await asyncio.sleep(2)
             elapsed += 2
             balance_after = await consultar_balance(isDemo)
 
-    print(f"💰 Saldo após a operação: {balance_after:.2f}")
     pnl = round(balance_after - balance_before, 2)
-    print(f"📈 PNL calculado: {pnl:.2f}")
     ordem["pnl"] = pnl
+
+    print(f"✅ Saldo final após polling: {balance_after:.2f}")
+    print(f"📈 PNL calculado: {pnl:.2f}")
+    print("============================================\n")
+
     return pnl
 
 
@@ -190,7 +200,7 @@ async def aguardar_e_executar_entradas(data):
             print("⚠️ Resultado vazio recebido, ignorando...")
             continue
 
-        pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))  # ← Executa PNL em paralelo
+        pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
 
         if resultado == "WIN":
             await pnl_task
