@@ -136,23 +136,27 @@ async def aguardar_resultado_ou_gale():
 async def calcular_pnl(ordem, isDemo):
     global resultado_global
 
-    # Polling em caso de WIN até o saldo aumentar
+    balance_before = ordem["balance_before"]
+    timeout = 30
+    elapsed = 0
+    balance_after = await consultar_balance(isDemo)
+
     if resultado_global == "WIN":
-        print("⏳ Esperando crédito do lucro no saldo (WIN)...")
-        tempo_max = 20
-        tempo = 0
-        while tempo < tempo_max:
-            balance_after = await consultar_balance(isDemo)
-            if balance_after > ordem["balance_before"]:
-                break
+        print("⏳ Aguardando crédito do lucro (WIN)...")
+        while balance_after <= balance_before and elapsed < timeout:
             await asyncio.sleep(2)
-            tempo += 2
-    else:
-        await asyncio.sleep(1)
-        balance_after = await consultar_balance(isDemo)
+            elapsed += 2
+            balance_after = await consultar_balance(isDemo)
+
+    elif resultado_global in ["LOSS", "GALE 1", "GALE 2"]:
+        print("⏳ Aguardando débito da perda...")
+        while balance_after == balance_before and elapsed < timeout:
+            await asyncio.sleep(2)
+            elapsed += 2
+            balance_after = await consultar_balance(isDemo)
 
     print(f"💰 Saldo após a operação: {balance_after:.2f}")
-    pnl = round(balance_after - ordem["balance_before"], 2)
+    pnl = round(balance_after - balance_before, 2)
     print(f"📈 PNL calculado: {pnl:.2f}")
     ordem["pnl"] = pnl
     return pnl
@@ -186,9 +190,10 @@ async def aguardar_e_executar_entradas(data):
             print("⚠️ Resultado vazio recebido, ignorando...")
             continue
 
-        await calcular_pnl(ordem, isDemo)
+        pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))  # ← Executa PNL em paralelo
 
         if resultado == "WIN":
+            await pnl_task
             print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
             status = "WON" if etapa_em_andamento == "entry" else f"WON NA {etapa_em_andamento.upper()}"
@@ -197,6 +202,7 @@ async def aguardar_e_executar_entradas(data):
             return
 
         elif resultado == "LOSS":
+            await pnl_task
             print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
             await update_loss_value(USER_ID, loss_amount, BROKERAGE_ID)
@@ -205,6 +211,7 @@ async def aguardar_e_executar_entradas(data):
             return
 
         elif resultado == "GALE 1" and etapa_em_andamento == "entry":
+            await pnl_task
             print("➡️ Sinal para GALE 1 recebido.")
             await update_loss_value(USER_ID, amount, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
@@ -215,6 +222,7 @@ async def aguardar_e_executar_entradas(data):
                 return
 
         elif resultado == "GALE 2" and etapa_em_andamento == "gale1":
+            await pnl_task
             print("➡️ Sinal para GALE 2 recebido.")
             await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
@@ -225,6 +233,7 @@ async def aguardar_e_executar_entradas(data):
                 return
 
         else:
+            await pnl_task
             print("⚠️ Sinal ignorado. Etapa atual não condiz com sinal recebido.")
 
 
