@@ -34,7 +34,26 @@ etapa_atual = None
 etapa_em_andamento = None
 
 
+# ♻️ Remove o SDK do cache da API
+async def limpar_sdk_cache():
+    url = "http://avalon_api:3001/api/sdk/stop"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "email": BROKERAGE_USERNAME
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    print("♻️ SDK removido do cache com sucesso.")
+                else:
+                    print(f"⚠️ Falha ao remover SDK do cache: Status {response.status}")
+    except Exception as e:
+        print(f"❌ Erro ao tentar remover SDK do cache: {e}")
+
+
 async def consultar_balance(isDemo: bool):
+    await limpar_sdk_cache()  # <- aqui limpamos o cache antes de consultar o saldo
     url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
     payload = {
