@@ -29,9 +29,9 @@ BROKERAGE_USERNAME = os.getenv("BROKERAGE_USERNAME")
 BROKERAGE_PASSWORD = os.getenv("BROKERAGE_PASSWORD")
 
 resultado_global = None
-proxima_etapa = asyncio.Event()
 etapa_atual = None
 etapa_em_andamento = None
+sinais_recebidos = asyncio.Queue()
 
 
 async def limpar_sdk_cache():
@@ -157,6 +157,29 @@ async def calcular_pnl(ordem, isDemo):
     print("============================================\n")
     return pnl
 
+
+async def aguardar_resultado_ou_gale():
+    global resultado_global, etapa_atual, etapa_em_andamento
+    while True:
+        data = await sinais_recebidos.get()
+        tipo = data.get("type")
+        if tipo == "gale":
+            step = data.get("step")
+            resultado = f"GALE {step}"
+        elif tipo == "result":
+            resultado = data.get("result")
+        else:
+            continue
+
+        resultado_global = resultado
+        print("📥 =================== SINAL RECEBIDO ===================")
+        print(f"📬 Tipo de sinal: {resultado}")
+        print(f"🔄 Etapa atual: {etapa_atual}")
+        print(f"🧩 Etapa em andamento: {etapa_em_andamento}")
+        print("========================================================\n")
+        return resultado
+
+
 async def aguardar_e_executar_entradas(data):
     global etapa_atual, etapa_em_andamento
     symbol = data["symbol"]
@@ -180,34 +203,21 @@ async def aguardar_e_executar_entradas(data):
     while True:
         resultado = await aguardar_resultado_ou_gale()
         pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
+        await pnl_task
 
-        if resultado == "WIN":
-            await pnl_task
-            if etapa_em_andamento == "entry" and ordem['pnl'] > 0:
-                print(f"✅ WIN na ENTRY | PNL: {ordem['pnl']:.2f}")
-                await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "WON", ordem["pnl"])
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
-                return
-            elif etapa_em_andamento == "gale1":
-                print(f"✅ WIN na GALE 1 | PNL: {ordem['pnl']:.2f}")
-                await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 1", ordem["pnl"])
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
-                return
-            elif etapa_em_andamento == "gale2":
-                print(f"✅ WIN na GALE 2 | PNL: {ordem['pnl']:.2f}")
-                await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 2", ordem["pnl"])
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
-                return
-            else:
-                print("⚠️ WIN recebido, mas PNL inválido. Considerando como LOSS e aguardando GALE.")
-                resultado_global = "LOSS"
-                continue
+        if ordem["pnl"] > 0:
+            status = {
+                "entry": "WON",
+                "gale1": "WON NA GALE 1",
+                "gale2": "WON NA GALE 2"
+            }.get(etapa_em_andamento, "WON")
+            print(f"✅ {status} | PNL: {ordem['pnl']:.2f}")
+            await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, status, ordem["pnl"])
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            return
 
-        elif resultado == "LOSS":
-            await pnl_task
+        if resultado == "LOSS":
             print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
             await update_loss_value(USER_ID, loss_amount, BROKERAGE_ID)
@@ -216,7 +226,6 @@ async def aguardar_e_executar_entradas(data):
             return
 
         elif resultado == "GALE 1" and etapa_em_andamento == "entry":
-            await pnl_task
             print("➡️ Sinal para GALE 1 recebido.")
             await update_loss_value(USER_ID, amount, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
@@ -227,7 +236,6 @@ async def aguardar_e_executar_entradas(data):
                 return
 
         elif resultado == "GALE 2" and etapa_em_andamento == "gale1":
-            await pnl_task
             print("➡️ Sinal para GALE 2 recebido.")
             await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
@@ -238,8 +246,7 @@ async def aguardar_e_executar_entradas(data):
                 return
 
         else:
-            await pnl_task
-            print("⚠️ Sinal ignorado. Etapa atual não condiz com sinal recebido.")
+            print("⚠️ Sinal ignorado. Etapa atual não condiz com sinal recebido ou PNL inválido.")
 
 
 async def aguardar_horario(horario, etapa):
@@ -254,22 +261,7 @@ async def aguardar_horario(horario, etapa):
         await asyncio.sleep(5)
 
 
-async def aguardar_resultado_ou_gale():
-    global resultado_global, proxima_etapa, etapa_atual, etapa_em_andamento
-    await proxima_etapa.wait()
-    proxima_etapa.clear()
-    resultado = resultado_global
-    resultado_global = None
-    print("📥 =================== SINAL RECEBIDO ===================")
-    print(f"📬 Tipo de sinal: {resultado}")
-    print(f"🔄 Etapa atual: {etapa_atual}")
-    print(f"🧩 Etapa em andamento: {etapa_em_andamento}")
-    print("========================================================\n")
-    return resultado
-
-
 async def main():
-    global resultado_global, proxima_etapa
     print("🔌 Conectando ao RabbitMQ...")
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
@@ -289,14 +281,8 @@ async def main():
                         print("📨 Novo sinal de entrada recebido")
                         asyncio.create_task(aguardar_e_executar_entradas(data))
 
-                    elif tipo == "result":
-                        resultado_global = data.get("result")
-                        proxima_etapa.set()
-
-                    elif tipo == "gale":
-                        step = data.get("step")
-                        resultado_global = f"GALE {step}"
-                        proxima_etapa.set()
+                    elif tipo in ["result", "gale"]:
+                        await sinais_recebidos.put(data)
 
                 except Exception as e:
                     print(f"❌ Erro ao processar mensagem: {e}")
