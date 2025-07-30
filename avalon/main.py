@@ -134,6 +134,8 @@ async def aguardar_resultado_ou_gale():
 
 
 async def calcular_pnl(ordem, isDemo):
+    # Adiciona delay para garantir atualização do saldo pela corretora
+    await asyncio.sleep(5)
     balance_after = await consultar_balance(isDemo)
     print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
     if ordem["balance_before"] is not None and balance_after is not None:
