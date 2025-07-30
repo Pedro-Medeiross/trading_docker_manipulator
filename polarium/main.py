@@ -34,24 +34,36 @@ etapa_atual = None
 etapa_em_andamento = None
 
 
-async def consultar_balance(account_type: str):
-    url = "http://avalon_api:3001/api/account/balance"
+async def consultar_balance(isDemo: bool):
+    url = "http://polarium_api:3002/api/account/balance"
     headers = {"Content-Type": "application/json"}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as response:
-            if response.status == 200:
-                data = await response.json()
-                for wallet in data.get("Wallets", []):
-                    if wallet["type"] == account_type:
-                        return wallet["amount"]
+    payload = {
+        "email": BROKERAGE_USERNAME,
+        "password": BROKERAGE_PASSWORD
+    }
+    account_type = "demo" if isDemo else "real"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    print(f"🔍 Resposta da API de saldo: {data}")
+                    for wallet in data.get("balances", []):
+                        if wallet["type"] == account_type:
+                            return wallet["amount"]
+                    print(f"⚠️ Tipo de carteira '{account_type}' não encontrado na resposta.")
+                else:
+                    print(f"❌ Erro ao consultar saldo: Status {response.status}")
+                    text = await response.text()
+                    print(f"📄 Corpo da resposta: {text}")
+    except Exception as e:
+        print(f"❌ Erro de conexão com API de saldo: {e}")
     return None
 
 
-async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id):
-    url = 'http://avalon_api:3001/api/trade/digital/buy'
-    account_type = "demo" if isDemo else "real"
+async def realizar_compra(isDemo, close_type, direction, symbol, amount):
+    url = 'http://polarium_api:3002/api/trade/digital/buy'
     api_direction = "CALL" if direction == "BUY" else "PUT"
-
     minutes, seconds = map(int, close_type.split(":"))
     period_seconds = minutes * 60 + seconds
 
@@ -61,26 +73,20 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
         "assetName": symbol,
         "operationValue": float(amount),
         "direction": api_direction,
-        "account_type": account_type,
+        "account_type": "demo" if isDemo else "real",
         "period": period_seconds
     }
 
     headers = {"Content-Type": "application/json"}
-    balance_before = await consultar_balance(account_type)
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url, json=payload, headers=headers) as response:
                 data = await response.json()
                 if response.status == 201:
-                    await asyncio.sleep(2)
-                    balance_after = await consultar_balance(account_type)
-                    pnl = round(balance_after - balance_before, 2) if balance_before and balance_after else 0
                     return {
-                        "id": trade_id,
                         "result": data.get("status", ""),
-                        "openPrice": data.get("open_price", 0),
-                        "pnl": pnl
+                        "openPrice": data.get("open_price", 0)
                     }
         except Exception as e:
             print(f"❌ Erro na requisição da ordem: {e}")
@@ -90,9 +96,19 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
 async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
     print(f"🟡 {etapa.upper()} - Enviando ordem de {amount} em {symbol} ({direction})")
     trade_id = str(uuid.uuid4())
+    balance_before = await consultar_balance(isDemo)
+    print(f"💰 Saldo antes da operação: {balance_before:.2f}" if balance_before is not None else "⚠️ Saldo antes indisponível")
     await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
                                   quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
-    return await realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id)
+    trade = await realizar_compra(isDemo, close_type, direction, symbol, amount)
+    if not trade:
+        return None
+    return {
+        "id": trade_id,
+        "balance_before": balance_before,
+        "pnl": 0,
+        **trade
+    }
 
 
 async def aguardar_horario(horario, etapa):
@@ -117,6 +133,18 @@ async def aguardar_resultado_ou_gale():
     return resultado
 
 
+async def calcular_pnl(ordem, isDemo):
+    balance_after = await consultar_balance(isDemo)
+    print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
+    if ordem["balance_before"] is not None and balance_after is not None:
+        pnl = round(balance_after - ordem["balance_before"], 2)
+    else:
+        pnl = 0
+    print(f"📈 PNL calculado: {pnl:.2f}")
+    ordem["pnl"] = pnl
+    return pnl
+
+
 async def aguardar_e_executar_entradas(data):
     global etapa_atual, etapa_em_andamento
 
@@ -131,7 +159,6 @@ async def aguardar_e_executar_entradas(data):
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
 
-    # Entrada principal
     etapa_atual = "entry"
     etapa_em_andamento = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
@@ -142,8 +169,14 @@ async def aguardar_e_executar_entradas(data):
     while True:
         resultado = await aguardar_resultado_ou_gale()
 
+        if resultado is None:
+            print("⚠️ Resultado vazio recebido, ignorando...")
+            continue
+
+        await calcular_pnl(ordem, isDemo)
+
         if resultado == "WIN":
-            print(f"✅ WIN na {etapa_em_andamento.upper()}")
+            print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
             status = "WON" if etapa_em_andamento == "entry" else f"WON NA {etapa_em_andamento.upper()}"
             await update_trade_order_info(ordem["id"], USER_ID, status, ordem["pnl"])
@@ -151,8 +184,9 @@ async def aguardar_e_executar_entradas(data):
             return
 
         elif resultado == "LOSS":
-            print(f"❌ LOSS na {etapa_em_andamento.upper()}")
-            await update_loss_value(USER_ID, amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4), BROKERAGE_ID)
+            print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
+            loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
+            await update_loss_value(USER_ID, loss_amount, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
