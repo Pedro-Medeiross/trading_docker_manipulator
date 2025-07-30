@@ -34,13 +34,10 @@ etapa_atual = None
 etapa_em_andamento = None
 
 
-# ♻️ Remove o SDK do cache da API
 async def limpar_sdk_cache():
     url = "http://avalon_api:3001/api/sdk/stop"
     headers = {"Content-Type": "application/json"}
-    payload = {
-        "email": BROKERAGE_USERNAME
-    }
+    payload = {"email": BROKERAGE_USERNAME}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, json=payload, headers=headers) as response:
@@ -53,13 +50,10 @@ async def limpar_sdk_cache():
 
 
 async def consultar_balance(isDemo: bool):
-    await limpar_sdk_cache()  # <- aqui limpamos o cache antes de consultar o saldo
+    await limpar_sdk_cache()
     url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
-    payload = {
-        "email": BROKERAGE_USERNAME,
-        "password": BROKERAGE_PASSWORD
-    }
+    payload = {"email": BROKERAGE_USERNAME, "password": BROKERAGE_PASSWORD}
     account_type = "demo" if isDemo else "real"
     try:
         async with aiohttp.ClientSession() as session:
@@ -85,7 +79,6 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
     api_direction = "CALL" if direction == "BUY" else "PUT"
     minutes, seconds = map(int, close_type.split(":"))
     period_seconds = minutes * 60 + seconds
-
     payload = {
         "email": BROKERAGE_USERNAME,
         "password": BROKERAGE_PASSWORD,
@@ -95,9 +88,7 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
         "account_type": "demo" if isDemo else "real",
         "period": period_seconds
     }
-
     headers = {"Content-Type": "application/json"}
-
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url, json=payload, headers=headers) as response:
@@ -143,18 +134,21 @@ async def aguardar_horario(horario, etapa):
 
 
 async def aguardar_resultado_ou_gale():
-    global resultado_global, proxima_etapa
+    global resultado_global, proxima_etapa, etapa_atual, etapa_em_andamento
     await proxima_etapa.wait()
     proxima_etapa.clear()
     resultado = resultado_global
     resultado_global = None
-    print(f"📬 Sinal recebido: {resultado}")
+    print("📥 =================== SINAL RECEBIDO ===================")
+    print(f"📬 Tipo de sinal: {resultado}")
+    print(f"🔄 Etapa atual: {etapa_atual}")
+    print(f"🧩 Etapa em andamento: {etapa_em_andamento}")
+    print("========================================================\n")
     return resultado
 
 
 async def calcular_pnl(ordem, isDemo):
     global resultado_global
-
     balance_before = ordem["balance_before"]
     timeout = 45
     elapsed = 0
@@ -183,17 +177,14 @@ async def calcular_pnl(ordem, isDemo):
 
     pnl = round(balance_after - balance_before, 2)
     ordem["pnl"] = pnl
-
     print(f"✅ Saldo final após polling: {balance_after:.2f}")
     print(f"📈 PNL calculado: {pnl:.2f}")
     print("============================================\n")
-
     return pnl
 
 
 async def aguardar_e_executar_entradas(data):
     global etapa_atual, etapa_em_andamento
-
     symbol = data["symbol"]
     direction = data["direction"]
     close_type = data["expiration"]
@@ -214,11 +205,6 @@ async def aguardar_e_executar_entradas(data):
 
     while True:
         resultado = await aguardar_resultado_ou_gale()
-
-        if resultado is None:
-            print("⚠️ Resultado vazio recebido, ignorando...")
-            continue
-
         pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
 
         if resultado == "WIN":
