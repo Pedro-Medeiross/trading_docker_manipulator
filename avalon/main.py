@@ -167,6 +167,10 @@ async def calcular_pnl(ordem, isDemo):
             elapsed += 2
             balance_after = await consultar_balance(isDemo)
 
+        if balance_after <= balance_before:
+            print("⚠️ Saldo não aumentou após WIN. Reclassificando como LOSS.")
+            resultado_global = "LOSS"
+
     elif resultado_global in ["LOSS", "GALE 1", "GALE 2"]:
         print("⏳ Esperando saldo diminuir (perda)...")
         while balance_after == balance_before and elapsed < timeout:
@@ -207,7 +211,7 @@ async def aguardar_e_executar_entradas(data):
         resultado = await aguardar_resultado_ou_gale()
         pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
 
-        if resultado == "WIN":
+        if resultado == "WIN" and resultado_global != "LOSS":
             await pnl_task
             print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
@@ -216,7 +220,7 @@ async def aguardar_e_executar_entradas(data):
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
 
-        elif resultado == "LOSS":
+        elif resultado == "LOSS" or (resultado == "WIN" and resultado_global == "LOSS"):
             await pnl_task
             print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
             loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
