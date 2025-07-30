@@ -61,10 +61,9 @@ async def consultar_balance(isDemo: bool):
     return None
 
 
-async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id):
+async def realizar_compra(isDemo, close_type, direction, symbol, amount):
     url = 'http://avalon_api:3001/api/trade/digital/buy'
     api_direction = "CALL" if direction == "BUY" else "PUT"
-
     minutes, seconds = map(int, close_type.split(":"))
     period_seconds = minutes * 60 + seconds
 
@@ -79,29 +78,15 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
     }
 
     headers = {"Content-Type": "application/json"}
-    balance_before = await consultar_balance(isDemo)
-    print(f"💰 Saldo antes da operação: {balance_before:.2f}" if balance_before is not None else "⚠️ Saldo antes indisponível")
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url, json=payload, headers=headers) as response:
                 data = await response.json()
                 if response.status == 201:
-                    await asyncio.sleep(2)
-                    balance_after = await consultar_balance(isDemo)
-                    print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
-
-                    if balance_before is not None and balance_after is not None:
-                        pnl = round(balance_after - balance_before, 2)
-                    else:
-                        pnl = 0
-
-                    print(f"📈 PNL calculado: {pnl:.2f}")
                     return {
-                        "id": trade_id,
                         "result": data.get("status", ""),
-                        "openPrice": data.get("open_price", 0),
-                        "pnl": pnl
+                        "openPrice": data.get("open_price", 0)
                     }
         except Exception as e:
             print(f"❌ Erro na requisição da ordem: {e}")
@@ -111,9 +96,19 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount, trade_i
 async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
     print(f"🟡 {etapa.upper()} - Enviando ordem de {amount} em {symbol} ({direction})")
     trade_id = str(uuid.uuid4())
+    balance_before = await consultar_balance(isDemo)
+    print(f"💰 Saldo antes da operação: {balance_before:.2f}" if balance_before is not None else "⚠️ Saldo antes indisponível")
     await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
                                   quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
-    return await realizar_compra(isDemo, close_type, direction, symbol, amount, trade_id)
+    trade = await realizar_compra(isDemo, close_type, direction, symbol, amount)
+    if not trade:
+        return None
+    return {
+        "id": trade_id,
+        "balance_before": balance_before,
+        "pnl": 0,
+        **trade
+    }
 
 
 async def aguardar_horario(horario, etapa):
@@ -136,6 +131,18 @@ async def aguardar_resultado_ou_gale():
     resultado_global = None
     print(f"📬 Sinal recebido: {resultado}")
     return resultado
+
+
+async def calcular_pnl(ordem, isDemo):
+    balance_after = await consultar_balance(isDemo)
+    print(f"💰 Saldo após a operação: {balance_after:.2f}" if balance_after is not None else "⚠️ Saldo após indisponível")
+    if ordem["balance_before"] is not None and balance_after is not None:
+        pnl = round(balance_after - ordem["balance_before"], 2)
+    else:
+        pnl = 0
+    print(f"📈 PNL calculado: {pnl:.2f}")
+    ordem["pnl"] = pnl
+    return pnl
 
 
 async def aguardar_e_executar_entradas(data):
@@ -165,6 +172,8 @@ async def aguardar_e_executar_entradas(data):
         if resultado is None:
             print("⚠️ Resultado vazio recebido, ignorando...")
             continue
+
+        await calcular_pnl(ordem, isDemo)
 
         if resultado == "WIN":
             print(f"✅ WIN na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
