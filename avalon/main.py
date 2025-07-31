@@ -205,7 +205,7 @@ async def aguardar_e_executar_entradas(data):
         pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
         await pnl_task
 
-        if ordem["pnl"] > 0:
+        if resultado and resultado.startswith("WIN"):
             status = {
                 "entry": "WON",
                 "gale1": "WON NA GALE 1",
