@@ -186,12 +186,14 @@ async def aguardar_e_executar_entradas(data):
     direction = data["direction"]
     close_type = data["expiration"]
     entrada = data["entry_time"]
-    gale1 = data["gale1"]
-    gale2 = data["gale2"]
+    gale1 = data.get("gale1")
+    gale2 = data.get("gale2")
 
     bot_options = await get_bot_options(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     amount = bot_options['entry_price']
     isDemo = bot_options['is_demo']
+    gale1_enabled = bot_options.get("gale_one", False)
+    gale2_enabled = bot_options.get("gale_two", False)
 
     etapa_atual = "entry"
     etapa_em_andamento = "entry"
@@ -202,33 +204,38 @@ async def aguardar_e_executar_entradas(data):
 
     while True:
         resultado = await aguardar_resultado_ou_gale()
-        pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
-        await pnl_task
 
-        if resultado and resultado.startswith("WIN"):
-            status = {
-                "entry": "WON",
-                "gale1": "WON NA GALE 1",
-                "gale2": "WON NA GALE 2"
-            }.get(etapa_em_andamento, "WON")
-            print(f"✅ {status} | PNL: {ordem['pnl']:.2f}")
+        if resultado == "WIN":
+            pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
+            await pnl_task
             await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, status, ordem["pnl"])
+            await update_trade_order_info(ordem["id"], USER_ID, "WON", ordem["pnl"])
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
 
         if resultado == "LOSS":
-            print(f"❌ LOSS na {etapa_em_andamento.upper()} | PNL: {ordem['pnl']:.2f}")
-            loss_amount = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
-            await update_loss_value(USER_ID, loss_amount, BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
+            loss_value = amount if etapa_em_andamento == "entry" else amount * (2 if etapa_em_andamento == "gale1" else 4)
+            pnl = -loss_value
+            ordem["pnl"] = pnl
+            await update_loss_value(USER_ID, loss_value, BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, "LOST", pnl)
             await verify_stop_values(USER_ID, BROKERAGE_ID)
             return
 
-        elif resultado == "GALE 1" and etapa_em_andamento == "entry":
-            print("➡️ Sinal para GALE 1 recebido.")
+        if resultado == "GALE 1" and etapa_em_andamento == "entry":
+            if not gale1 or not gale1_enabled:
+                print("⚠️ GALE 1 não permitido ou horário não definido. Encerrando com LOSS da entrada principal.")
+                pnl = -amount
+                ordem["pnl"] = pnl
+                await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+                await update_trade_order_info(ordem["id"], USER_ID, "LOST", pnl)
+                await verify_stop_values(USER_ID, BROKERAGE_ID)
+                return
+            print("➡️ Executando GALE 1...")
+            pnl = -amount
+            ordem["pnl"] = pnl
             await update_loss_value(USER_ID, amount, BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
+            await update_trade_order_info(ordem["id"], USER_ID, "LOST", pnl)
             etapa_em_andamento = "gale1"
             await aguardar_horario(gale1, "Gale 1")
             ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
@@ -236,17 +243,37 @@ async def aguardar_e_executar_entradas(data):
                 return
 
         elif resultado == "GALE 2" and etapa_em_andamento == "gale1":
-            print("➡️ Sinal para GALE 2 recebido.")
+            if not gale2 or not gale2_enabled:
+                print("⚠️ GALE 2 não permitido ou horário não definido. Encerrando com LOSS da GALE 1.")
+                pnl = -amount * 2
+                ordem["pnl"] = pnl
+                await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
+                await update_trade_order_info(ordem["id"], USER_ID, "LOST", pnl)
+                await verify_stop_values(USER_ID, BROKERAGE_ID)
+                return
+            print("➡️ Executando GALE 2...")
+            pnl = -amount * 2
+            ordem["pnl"] = pnl
             await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "LOST", ordem["pnl"])
+            await update_trade_order_info(ordem["id"], USER_ID, "LOST", pnl)
             etapa_em_andamento = "gale2"
             await aguardar_horario(gale2, "Gale 2")
             ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
             if not ordem:
                 return
 
+        elif resultado == "WIN" and etapa_em_andamento in ["gale1", "gale2"]:
+            pnl_task = asyncio.create_task(calcular_pnl(ordem, isDemo))
+            await pnl_task
+            status = "WON NA " + etapa_em_andamento.upper()
+            await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, status, ordem["pnl"])
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            return
+
         else:
-            print("⚠️ Sinal ignorado. Etapa atual não condiz com sinal recebido ou PNL inválido.")
+            print("⚠️ Resultado inesperado. Encerrando execução.")
+            return
 
 
 async def aguardar_horario(horario, etapa):
