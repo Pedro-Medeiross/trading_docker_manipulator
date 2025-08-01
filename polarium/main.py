@@ -31,6 +31,7 @@ BROKERAGE_PASSWORD = os.getenv("BROKERAGE_PASSWORD")
 resultado_global = None
 etapa_em_andamento = None
 sinais_recebidos = asyncio.Queue()
+etapas_execucao = {}
 
 
 async def limpar_sdk_cache():
@@ -104,6 +105,8 @@ async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
         print("❌ Ordem falhou. Etapa será cancelada.")
         return None
 
+    etapas_execucao[etapa] = datetime.now(pytz.timezone("America/Sao_Paulo"))
+
     await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
                                   quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
 
@@ -148,12 +151,15 @@ async def aguardar_resultado_ou_gale(etapa):
         data = await sinais_recebidos.get()
         tipo = data.get("type")
         resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
-        if resultado in sinais_validos[etapa]:
+        data_hora = datetime.now(pytz.timezone("America/Sao_Paulo"))
+        tempo_execucao = etapas_execucao.get(etapa)
+
+        if resultado in sinais_validos[etapa] and tempo_execucao and data_hora >= tempo_execucao:
             resultado_global = resultado
             print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
             return resultado
         else:
-            print(f"⚠️ Resultado ignorado ({resultado}) fora da etapa {etapa.upper()}")
+            print(f"⚠️ Resultado ignorado ({resultado}) fora da etapa {etapa.upper()} ou chegou antes da execução")
 
 
 async def aguardar_horario(horario, etapa):
