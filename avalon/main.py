@@ -138,48 +138,57 @@ async def calcular_pnl(ordem, isDemo):
     elapsed = 0
 
     print(f"📊 Saldo antes da operação: {balance_before}")
+
+    # Aguarda chegada do resultado WIN antes de seguir com lógica de PNL
+    while resultado_global != "WIN" and elapsed < timeout:
+        await asyncio.sleep(1)
+        elapsed += 1
+
+    if resultado_global != "WIN":
+        print("ℹ️ Resultado não foi WIN. PNL será tratado separadamente.")
+        return 0
+
     balance_after = await consultar_balance(isDemo)
     print(f"📊 Saldo inicial após resultado: {balance_after}")
 
-    if resultado_global == "WIN":
-        if balance_after is None:
-            print("⚠️ Não foi possível consultar saldo após resultado.")
-            ordem["pnl"] = 0
-            return 0
+    if balance_after is None:
+        print("⚠️ Não foi possível consultar saldo após resultado.")
+        ordem["pnl"] = 0
+        return 0
 
-        while balance_after == balance_before and elapsed < timeout:
-            await asyncio.sleep(2)
-            elapsed += 2
-            balance_after = await consultar_balance(isDemo)
-            if balance_after is not None:
-                print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
-            else:
-                print(f"⏱️ Tentativa após {elapsed}s - Saldo: None")
+    elapsed = 0
+    while balance_after == balance_before and elapsed < timeout:
+        await asyncio.sleep(2)
+        elapsed += 2
+        balance_after = await consultar_balance(isDemo)
+        if balance_after is not None:
+            print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
+        else:
+            print(f"⏱️ Tentativa após {elapsed}s - Saldo: None")
 
-        if balance_after is None:
-            print("⚠️ Saldo não pôde ser consultado. PNL será 0.")
-            ordem["pnl"] = 0
-            return 0
+    if balance_after is None:
+        print("⚠️ Saldo não pôde ser consultado. PNL será 0.")
+        ordem["pnl"] = 0
+        return 0
 
-        if balance_after == balance_before:
-            print("⚠️ Saldo permaneceu igual após WIN. PNL será 0.")
-            ordem["pnl"] = 0
-            return 0
+    if balance_after == balance_before:
+        print("⚠️ Saldo permaneceu igual após WIN. PNL será 0.")
+        ordem["pnl"] = 0
+        return 0
 
-        if balance_after < balance_before:
-            print("❌ Saldo caiu mesmo com resultado WIN. Corrigindo para LOSS.")
-            loss = ordem.get("amount", 0)
-            ordem["pnl"] = loss
-            await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "LOST (saldo caiu com WIN)", loss)
-            await verify_stop_values(USER_ID, BROKERAGE_ID)
-            return -loss
+    if balance_after < balance_before:
+        print("❌ Saldo caiu mesmo com resultado WIN. Corrigindo para LOSS.")
+        loss = ordem.get("amount", 0)
+        ordem["pnl"] = loss
+        await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "LOST (saldo caiu com WIN)", loss)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        return -loss
 
     pnl = round(balance_after - balance_before, 2)
     ordem["pnl"] = pnl
     print(f"📈 PNL final: {pnl:.2f}")
     return pnl
-
 
 async def aguardar_resultado_ou_gale(etapa):
     global resultado_global
