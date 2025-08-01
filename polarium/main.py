@@ -67,7 +67,7 @@ async def consultar_balance(isDemo: bool):
 
 
 async def realizar_compra(isDemo, close_type, direction, symbol, amount):
-    url = 'http://avalon_api:3001/api/trade/digital/buy'
+    url = 'http://polarium_api:3002/api/trade/digital/buy'
     api_direction = "CALL" if direction == "BUY" else "PUT"
 
     # Conversão de close_type para segundos
