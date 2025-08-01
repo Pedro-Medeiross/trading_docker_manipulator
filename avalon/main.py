@@ -190,6 +190,7 @@ async def calcular_pnl(ordem, isDemo):
     print(f"📈 PNL final: {pnl:.2f}")
     return pnl
 
+
 async def aguardar_resultado_ou_gale(etapa):
     global resultado_global
     sinais_validos = {
@@ -197,14 +198,12 @@ async def aguardar_resultado_ou_gale(etapa):
         "gale1": ["WIN", "LOSS", "GALE 2"],
         "gale2": ["WIN", "LOSS"]
     }
+    print(f"⏳ Aguardando resultado da etapa {etapa.upper()}...")
     while True:
         data = await sinais_recebidos.get()
         tipo = data.get("type")
         resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
-        data_hora = datetime.now(pytz.timezone("America/Sao_Paulo"))
-        tempo_execucao = etapas_execucao.get(etapa)
-
-        if resultado in sinais_validos[etapa] and tempo_execucao and data_hora >= tempo_execucao:
+        if resultado in sinais_validos[etapa]:
             resultado_global = resultado
             print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
             return resultado
