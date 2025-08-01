@@ -134,7 +134,7 @@ async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
 
 async def calcular_pnl(ordem, isDemo):
     balance_before = ordem["balance_before"]
-    timeout = 55
+    timeout = 50
     elapsed = 0
 
     print(f"📊 Saldo antes da operação: {balance_before}")
@@ -158,8 +158,8 @@ async def calcular_pnl(ordem, isDemo):
 
     elapsed = 0
     while balance_after == balance_before and elapsed < timeout:
-        await asyncio.sleep(2)
-        elapsed += 2
+        await asyncio.sleep(10)  # aguarda 10s entre tentativas
+        elapsed += 10
         balance_after = await consultar_balance(isDemo)
         if balance_after is not None:
             print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
