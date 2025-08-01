@@ -136,23 +136,46 @@ async def calcular_pnl(ordem, isDemo):
     balance_before = ordem["balance_before"]
     timeout = 55
     elapsed = 0
-    balance_after = await consultar_balance(isDemo)
 
     print(f"📊 Saldo antes da operação: {balance_before}")
+    balance_after = await consultar_balance(isDemo)
     print(f"📊 Saldo inicial após resultado: {balance_after}")
 
     if resultado_global == "WIN":
-        while balance_after is not None and balance_after <= balance_before and elapsed < timeout:
-            await asyncio.sleep(2)
-            elapsed += 2
-            balance_after = await consultar_balance(isDemo)
-            print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
-        if balance_after is None or balance_after <= balance_before:
-            print("⚠️ Saldo não aumentou após WIN. PNL será registrado como 0.")
+        if balance_after is None:
+            print("⚠️ Não foi possível consultar saldo após resultado.")
             ordem["pnl"] = 0
             return 0
 
-    pnl = round(balance_after - balance_before, 2) if balance_after is not None else 0
+        while balance_after == balance_before and elapsed < timeout:
+            await asyncio.sleep(2)
+            elapsed += 2
+            balance_after = await consultar_balance(isDemo)
+            if balance_after is not None:
+                print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
+            else:
+                print(f"⏱️ Tentativa após {elapsed}s - Saldo: None")
+
+        if balance_after is None:
+            print("⚠️ Saldo não pôde ser consultado. PNL será 0.")
+            ordem["pnl"] = 0
+            return 0
+
+        if balance_after == balance_before:
+            print("⚠️ Saldo permaneceu igual após WIN. PNL será 0.")
+            ordem["pnl"] = 0
+            return 0
+
+        if balance_after < balance_before:
+            print("❌ Saldo caiu mesmo com resultado WIN. Corrigindo para LOSS.")
+            loss = ordem.get("amount", 0)
+            ordem["pnl"] = loss
+            await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, "LOST (saldo caiu com WIN)", loss)
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            return -loss
+
+    pnl = round(balance_after - balance_before, 2)
     ordem["pnl"] = pnl
     print(f"📈 PNL final: {pnl:.2f}")
     return pnl
