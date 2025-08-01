@@ -199,28 +199,16 @@ async def aguardar_resultado_ou_gale(etapa):
         "gale2": ["WIN", "LOSS"]
     }
     print(f"⏳ Aguardando resultado da etapa {etapa.upper()}...")
-
     while True:
         data = await sinais_recebidos.get()
         tipo = data.get("type")
         resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
-
-        # 🕒 Verificação de tempo da etapa
-        horario_execucao = etapas_execucao.get(etapa)
-        agora = datetime.now(pytz.timezone("America/Sao_Paulo"))
-        if not horario_execucao:
-            print(f"⚠️ Resultado ({resultado}) recebido antes da execução da etapa {etapa.upper()}. Ignorado.")
-            continue
-        if agora < horario_execucao:
-            print(f"⚠️ Resultado ({resultado}) chegou antes do horário real da etapa {etapa.upper()}. Ignorado.")
-            continue
-
         if resultado in sinais_validos[etapa]:
             resultado_global = resultado
             print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
             return resultado
         else:
-            print(f"⚠️ Resultado ignorado ({resultado}) fora da etapa {etapa.upper()} ou inválido.")
+            print(f"⚠️ Resultado ignorado ({resultado}) fora da etapa {etapa.upper()} ou chegou antes da execução")
 
 
 async def aguardar_horario(horario, etapa):
