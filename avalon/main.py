@@ -39,9 +39,11 @@ async def limpar_sdk_cache():
     payload = {"email": BROKERAGE_USERNAME}
     try:
         async with aiohttp.ClientSession() as session:
-            await session.delete(url, json=payload, headers=headers)
-    except:
-        pass
+            async with session.delete(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    print("♻️ SDK removido do cache com sucesso.")
+    except Exception as e:
+        print(f"❌ Erro ao limpar cache SDK: {e}")
 
 
 async def consultar_balance(isDemo: bool):
@@ -58,8 +60,8 @@ async def consultar_balance(isDemo: bool):
                     for wallet in data.get("balances", []):
                         if wallet["type"] == account_type:
                             return wallet["amount"]
-    except:
-        pass
+    except Exception as e:
+        print(f"❌ Erro ao consultar saldo: {e}")
     return None
 
 
@@ -82,10 +84,13 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
         try:
             async with session.post(url, json=payload, headers=headers) as response:
                 data = await response.json()
-                if response.status == 201 and data.get("message") == "Digital option purchase initiated.":
-                    return data.get("order")
-        except:
-            pass
+                if response.status == 201 and "Digital option purchase initiated." in data.get("message", ""):
+                    print("✅ Ordem enviada com sucesso.")
+                    return {"status": "enviada", "data": data}
+                else:
+                    print(f"⚠️ Ordem não foi aceita: {data}")
+        except Exception as e:
+            print(f"❌ Erro na ordem: {e}")
     return None
 
 
@@ -93,22 +98,20 @@ async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
     print(f"🟡 {etapa.upper()} - Enviando ordem de {amount} em {symbol} ({direction})")
     trade_id = str(uuid.uuid4())
     balance_before = await consultar_balance(isDemo)
-    order_data = await realizar_compra(isDemo, close_type, direction, symbol, amount)
-    if not order_data:
-        print(f"❌ Ordem não criada para {etapa.upper()} — abortando etapa.")
-        return None
+    trade = await realizar_compra(isDemo, close_type, direction, symbol, amount)
 
-    now = datetime.now(pytz.timezone("America/Sao_Paulo")).strftime("%H:%M")
-    if now != etapa_em_andamento:
-        print(f"⚠️ Ordem criada em horário divergente: {now} ≠ {etapa_em_andamento}. Ignorada.")
+    if not trade:
+        print("❌ Ordem falhou. Etapa será cancelada.")
         return None
 
     await create_trade_order_info(user_id=USER_ID, order_id=trade_id, symbol=symbol, order_type=direction,
                                   quantity=amount, price=0, status="PENDING", brokerage_id=BROKERAGE_ID)
+
     return {
         "id": trade_id,
         "balance_before": balance_before,
-        "pnl": 0
+        "pnl": 0,
+        **trade
     }
 
 
@@ -117,18 +120,20 @@ async def calcular_pnl(ordem, isDemo):
     timeout = 55
     elapsed = 0
     balance_after = await consultar_balance(isDemo)
+
     if resultado_global == "WIN":
         while balance_after <= balance_before and elapsed < timeout:
             await asyncio.sleep(2)
             elapsed += 2
             balance_after = await consultar_balance(isDemo)
         if balance_after <= balance_before:
-            print("⚠️ Saldo não aumentou após WIN. PNL será 0.")
+            print("⚠️ Saldo não aumentou após WIN. PNL será registrado como 0.")
             ordem["pnl"] = 0
             return 0
+
     pnl = round(balance_after - balance_before, 2)
     ordem["pnl"] = pnl
-    print(f"📈 PNL: {pnl:.2f}")
+    print(f"📈 PNL final: {pnl:.2f}")
     return pnl
 
 
@@ -145,7 +150,10 @@ async def aguardar_resultado_ou_gale(etapa):
         resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
         if resultado in sinais_validos[etapa]:
             resultado_global = resultado
+            print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
             return resultado
+        else:
+            print(f"⚠️ Resultado ignorado ({resultado}) fora da etapa {etapa.upper()}")
 
 
 async def aguardar_horario(horario, etapa):
@@ -175,14 +183,15 @@ async def aguardar_e_executar_entradas(data):
     gale1_enabled = bot_options.get("gale_one", False)
     gale2_enabled = bot_options.get("gale_two", False)
 
-    etapa_em_andamento = entrada
+    # ENTRADA PRINCIPAL
+    etapa_em_andamento = "entry"
     await aguardar_horario(entrada, "Entrada Principal")
     ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
     if not ordem:
-        print("🚫 Ordem da principal não criada. Abortando sequência.")
+        print("❌ Falha na entrada principal. Abortando.")
         return
-
     resultado = await aguardar_resultado_ou_gale("entry")
+
     if resultado == "WIN":
         await calcular_pnl(ordem, isDemo)
         await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
@@ -190,56 +199,63 @@ async def aguardar_e_executar_entradas(data):
         await verify_stop_values(USER_ID, BROKERAGE_ID)
         return
 
-    if resultado == "LOSS" or (resultado == "GALE 1" and (not gale1 or not gale1_enabled)):
-        loss = amount
-        ordem["pnl"] = -loss
-        await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-        await update_trade_order_info(ordem["id"], USER_ID, "LOST", -loss)
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
-        return
+    if resultado in ["LOSS", "GALE 1"]:
+        if not gale1 or not gale1_enabled:
+            print("❌ GALE 1 não habilitada. Finalizando como LOSS.")
+            loss = amount
+            ordem["pnl"] = loss
+            await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            return
 
-    etapa_em_andamento = gale1
-    await aguardar_horario(gale1, "Gale 1")
-    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
-    if not ordem:
-        print("🚫 Gale 1 não criada. Abortando.")
-        return
+        # GALE 1
+        etapa_em_andamento = "gale1"
+        await aguardar_horario(gale1, "Gale 1")
+        ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
+        if not ordem:
+            print("❌ Falha ao executar GALE 1. Abortando operação.")
+            return
+        resultado = await aguardar_resultado_ou_gale("gale1")
 
-    resultado = await aguardar_resultado_ou_gale("gale1")
-    if resultado == "WIN":
-        await calcular_pnl(ordem, isDemo)
-        await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-        await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 1", ordem["pnl"])
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
-        return
+        if resultado == "WIN":
+            await calcular_pnl(ordem, isDemo)
+            await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+            await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 1", ordem["pnl"])
+            await verify_stop_values(USER_ID, BROKERAGE_ID)
+            return
 
-    if resultado == "LOSS" or (resultado == "GALE 2" and (not gale2 or not gale2_enabled)):
-        loss = amount * 2
-        ordem["pnl"] = -loss
-        await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-        await update_trade_order_info(ordem["id"], USER_ID, "LOST", -loss)
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
-        return
+        if resultado in ["LOSS", "GALE 2"]:
+            if not gale2 or not gale2_enabled:
+                print("❌ GALE 2 não habilitada. Finalizando GALE 1 como LOSS.")
+                loss = amount * 2
+                ordem["pnl"] = loss
+                await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+                await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+                await verify_stop_values(USER_ID, BROKERAGE_ID)
+                return
 
-    etapa_em_andamento = gale2
-    await aguardar_horario(gale2, "Gale 2")
-    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
-    if not ordem:
-        print("🚫 Gale 2 não criada. Abortando.")
-        return
+            # GALE 2
+            etapa_em_andamento = "gale2"
+            await aguardar_horario(gale2, "Gale 2")
+            ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
+            if not ordem:
+                print("❌ Falha ao executar GALE 2. Abortando.")
+                return
+            resultado = await aguardar_resultado_ou_gale("gale2")
 
-    resultado = await aguardar_resultado_ou_gale("gale2")
-    if resultado == "WIN":
-        await calcular_pnl(ordem, isDemo)
-        await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-        await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 2", ordem["pnl"])
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
-    else:
-        loss = amount * 4
-        ordem["pnl"] = -loss
-        await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-        await update_trade_order_info(ordem["id"], USER_ID, "LOST", -loss)
-        await verify_stop_values(USER_ID, BROKERAGE_ID)
+            if resultado == "WIN":
+                await calcular_pnl(ordem, isDemo)
+                await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+                await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 2", ordem["pnl"])
+                await verify_stop_values(USER_ID, BROKERAGE_ID)
+            else:
+                print("❌ Resultado final: LOSS na GALE 2.")
+                loss = amount * 4
+                ordem["pnl"] = loss
+                await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+                await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+                await verify_stop_values(USER_ID, BROKERAGE_ID)
 
 
 async def main():
@@ -263,6 +279,7 @@ async def main():
                         asyncio.create_task(aguardar_e_executar_entradas(data))
                     elif tipo in ["result", "gale"]:
                         await sinais_recebidos.put(data)
+                        print(data)
                 except Exception as e:
                     print(f"❌ Erro ao processar mensagem: {e}")
 
