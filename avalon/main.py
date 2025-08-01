@@ -69,8 +69,14 @@ async def consultar_balance(isDemo: bool):
 async def realizar_compra(isDemo, close_type, direction, symbol, amount):
     url = 'http://avalon_api:3001/api/trade/digital/buy'
     api_direction = "CALL" if direction == "BUY" else "PUT"
-    minutes, seconds = map(int, close_type.split(":"))
-    period_seconds = minutes * 60 + seconds
+
+    # Conversão de close_type para segundos
+    try:
+        minutes = int(close_type.replace('M', ''))
+        period_seconds = minutes * 60
+    except:
+        period_seconds = 60  # fallback para 60s padrão
+
     payload = {
         "email": BROKERAGE_USERNAME,
         "password": BROKERAGE_PASSWORD,
@@ -80,14 +86,20 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
         "account_type": "demo" if isDemo else "real",
         "period": period_seconds
     }
+
     headers = {"Content-Type": "application/json"}
+
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url, json=payload, headers=headers) as response:
                 data = await response.json()
-                if response.status == 201 and "Digital option purchase initiated." in data.get("message", ""):
+                if response.status == 201 and "order" in data:
                     print("✅ Ordem enviada com sucesso.")
-                    return {"status": "enviada", "data": data}
+                    print(f"hora: {datetime.now(pytz.timezone('America/Sao_Paulo')).isoformat()}")
+                    return {
+                        "result": data.get("message", ""),
+                        "openPrice": data.get("order", {}).get("id", 0)
+                    }
                 else:
                     print(f"⚠️ Ordem não foi aceita: {data}")
         except Exception as e:
