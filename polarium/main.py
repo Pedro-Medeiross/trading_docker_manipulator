@@ -69,8 +69,14 @@ async def consultar_balance(isDemo: bool):
 async def realizar_compra(isDemo, close_type, direction, symbol, amount):
     url = 'http://avalon_api:3001/api/trade/digital/buy'
     api_direction = "CALL" if direction == "BUY" else "PUT"
-    minutes, seconds = map(int, close_type.split(":"))
-    period_seconds = minutes * 60 + seconds
+
+    # Conversão de close_type para segundos
+    try:
+        minutes = int(close_type.replace('M', ''))
+        period_seconds = minutes * 60
+    except:
+        period_seconds = 60  # fallback para 60s padrão
+
     payload = {
         "email": BROKERAGE_USERNAME,
         "password": BROKERAGE_PASSWORD,
@@ -80,14 +86,22 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
         "account_type": "demo" if isDemo else "real",
         "period": period_seconds
     }
+
+    print(payload)
+
     headers = {"Content-Type": "application/json"}
+
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(url, json=payload, headers=headers) as response:
                 data = await response.json()
-                if response.status == 201 and "Digital option purchase initiated." in data.get("message", ""):
+                if response.status == 201 and "order" in data:
                     print("✅ Ordem enviada com sucesso.")
-                    return {"status": "enviada", "data": data}
+                    print(f"hora: {datetime.now(pytz.timezone('America/Sao_Paulo')).isoformat()}")
+                    return {
+                        "result": data.get("message", ""),
+                        "openPrice": data.get("order", {}).get("id", 0)
+                    }
                 else:
                     print(f"⚠️ Ordem não foi aceita: {data}")
         except Exception as e:
@@ -122,17 +136,54 @@ async def calcular_pnl(ordem, isDemo):
     balance_before = ordem["balance_before"]
     timeout = 55
     elapsed = 0
-    balance_after = await consultar_balance(isDemo)
 
-    if resultado_global == "WIN":
-        while balance_after <= balance_before and elapsed < timeout:
-            await asyncio.sleep(2)
-            elapsed += 2
-            balance_after = await consultar_balance(isDemo)
-        if balance_after <= balance_before:
-            print("⚠️ Saldo não aumentou após WIN. PNL será registrado como 0.")
-            ordem["pnl"] = 0
-            return 0
+    print(f"📊 Saldo antes da operação: {balance_before}")
+
+    # Aguarda chegada do resultado WIN antes de seguir com lógica de PNL
+    while resultado_global != "WIN" and elapsed < timeout:
+        await asyncio.sleep(1)
+        elapsed += 1
+
+    if resultado_global != "WIN":
+        print("ℹ️ Resultado não foi WIN. PNL será tratado separadamente.")
+        return 0
+
+    balance_after = await consultar_balance(isDemo)
+    print(f"📊 Saldo inicial após resultado: {balance_after}")
+
+    if balance_after is None:
+        print("⚠️ Não foi possível consultar saldo após resultado.")
+        ordem["pnl"] = 0
+        return 0
+
+    elapsed = 0
+    while balance_after == balance_before and elapsed < timeout:
+        await asyncio.sleep(2)
+        elapsed += 2
+        balance_after = await consultar_balance(isDemo)
+        if balance_after is not None:
+            print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
+        else:
+            print(f"⏱️ Tentativa após {elapsed}s - Saldo: None")
+
+    if balance_after is None:
+        print("⚠️ Saldo não pôde ser consultado. PNL será 0.")
+        ordem["pnl"] = 0
+        return 0
+
+    if balance_after == balance_before:
+        print("⚠️ Saldo permaneceu igual após WIN. PNL será 0.")
+        ordem["pnl"] = 0
+        return 0
+
+    if balance_after < balance_before:
+        print("❌ Saldo caiu mesmo com resultado WIN. Corrigindo para LOSS.")
+        loss = ordem.get("amount", 0)
+        ordem["pnl"] = loss
+        await update_loss_value(USER_ID, loss, BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "LOST (saldo caiu com WIN)", loss)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        return -loss
 
     pnl = round(balance_after - balance_before, 2)
     ordem["pnl"] = pnl
@@ -147,14 +198,12 @@ async def aguardar_resultado_ou_gale(etapa):
         "gale1": ["WIN", "LOSS", "GALE 2"],
         "gale2": ["WIN", "LOSS"]
     }
+    print(f"⏳ Aguardando resultado da etapa {etapa.upper()}...")
     while True:
         data = await sinais_recebidos.get()
         tipo = data.get("type")
         resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
-        data_hora = datetime.now(pytz.timezone("America/Sao_Paulo"))
-        tempo_execucao = etapas_execucao.get(etapa)
-
-        if resultado in sinais_validos[etapa] and tempo_execucao and data_hora >= tempo_execucao:
+        if resultado in sinais_validos[etapa]:
             resultado_global = resultado
             print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
             return resultado
@@ -212,6 +261,12 @@ async def aguardar_e_executar_entradas(data):
         return
 
     etapa_em_andamento = "gale1"
+    print("executando gale 1 e definindo ordem anterior como loss")
+    loss = amount
+    ordem["pnl"] = loss
+    await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+    await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
     await aguardar_horario(gale1, "gale 1")
     ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "gale1")
     if not ordem: return
@@ -234,6 +289,12 @@ async def aguardar_e_executar_entradas(data):
         return
 
     etapa_em_andamento = "gale2"
+    print("executando gale 2 e definindo ordem anterior como loss")
+    loss = amount
+    ordem["pnl"] = loss
+    await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+    await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
     await aguardar_horario(gale2, "gale 2")
     ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "gale2")
     if not ordem: return

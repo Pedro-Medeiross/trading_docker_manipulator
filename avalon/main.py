@@ -261,6 +261,12 @@ async def aguardar_e_executar_entradas(data):
         return
 
     etapa_em_andamento = "gale1"
+    print("executando gale 1 e definindo ordem anterior como loss")
+    loss = amount
+    ordem["pnl"] = loss
+    await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+    await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
     await aguardar_horario(gale1, "gale 1")
     ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "gale1")
     if not ordem: return
@@ -283,6 +289,12 @@ async def aguardar_e_executar_entradas(data):
         return
 
     etapa_em_andamento = "gale2"
+    print("executando gale 2 e definindo ordem anterior como loss")
+    loss = amount
+    ordem["pnl"] = loss
+    await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+    await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
     await aguardar_horario(gale2, "gale 2")
     ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "gale2")
     if not ordem: return
