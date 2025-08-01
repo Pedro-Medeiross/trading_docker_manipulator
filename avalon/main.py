@@ -124,17 +124,21 @@ async def calcular_pnl(ordem, isDemo):
     elapsed = 0
     balance_after = await consultar_balance(isDemo)
 
+    print(f"📊 Saldo antes da operação: {balance_before}")
+    print(f"📊 Saldo inicial após resultado: {balance_after}")
+
     if resultado_global == "WIN":
-        while balance_after <= balance_before and elapsed < timeout:
+        while balance_after is not None and balance_after <= balance_before and elapsed < timeout:
             await asyncio.sleep(2)
             elapsed += 2
             balance_after = await consultar_balance(isDemo)
-        if balance_after <= balance_before:
+            print(f"⏱️ Tentativa após {elapsed}s - Saldo: {balance_after}")
+        if balance_after is None or balance_after <= balance_before:
             print("⚠️ Saldo não aumentou após WIN. PNL será registrado como 0.")
             ordem["pnl"] = 0
             return 0
 
-    pnl = round(balance_after - balance_before, 2)
+    pnl = round(balance_after - balance_before, 2) if balance_after is not None else 0
     ordem["pnl"] = pnl
     print(f"📈 PNL final: {pnl:.2f}")
     return pnl
