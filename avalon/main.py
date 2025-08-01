@@ -35,7 +35,7 @@ etapas_execucao = {}
 
 
 async def limpar_sdk_cache():
-    url = "http://polarium_api:3002/api/sdk/stop"
+    url = "http://avalon_api:3001/api/sdk/stop"
     headers = {"Content-Type": "application/json"}
     payload = {"email": BROKERAGE_USERNAME}
     try:
@@ -49,7 +49,7 @@ async def limpar_sdk_cache():
 
 async def consultar_balance(isDemo: bool):
     await limpar_sdk_cache()
-    url = "http://polarium_api:3002/api/account/balance"
+    url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
     payload = {"email": BROKERAGE_USERNAME, "password": BROKERAGE_PASSWORD}
     account_type = "demo" if isDemo else "real"
