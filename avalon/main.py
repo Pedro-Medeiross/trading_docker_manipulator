@@ -87,6 +87,8 @@ async def realizar_compra(isDemo, close_type, direction, symbol, amount):
         "period": period_seconds
     }
 
+    print(payload)
+
     headers = {"Content-Type": "application/json"}
 
     async with aiohttp.ClientSession() as session:
