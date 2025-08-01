@@ -35,7 +35,7 @@ etapas_execucao = {}
 
 
 async def limpar_sdk_cache():
-    url = "http://avalon_api:3001/api/sdk/stop"
+    url = "http://polarium_api:3002/api/sdk/stop"
     headers = {"Content-Type": "application/json"}
     payload = {"email": BROKERAGE_USERNAME}
     try:
@@ -49,7 +49,7 @@ async def limpar_sdk_cache():
 
 async def consultar_balance(isDemo: bool):
     await limpar_sdk_cache()
-    url = "http://avalon_api:3001/api/account/balance"
+    url = "http://polarium_api:3002/api/account/balance"
     headers = {"Content-Type": "application/json"}
     payload = {"email": BROKERAGE_USERNAME, "password": BROKERAGE_PASSWORD}
     account_type = "demo" if isDemo else "real"
@@ -189,13 +189,10 @@ async def aguardar_e_executar_entradas(data):
     gale1_enabled = bot_options.get("gale_one", False)
     gale2_enabled = bot_options.get("gale_two", False)
 
-    # ENTRADA PRINCIPAL
     etapa_em_andamento = "entry"
-    await aguardar_horario(entrada, "Entrada Principal")
-    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
-    if not ordem:
-        print("❌ Falha na entrada principal. Abortando.")
-        return
+    await aguardar_horario(entrada, "entrada principal")
+    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount, "entry")
+    if not ordem: return
     resultado = await aguardar_resultado_ou_gale("entry")
 
     if resultado == "WIN":
@@ -205,63 +202,55 @@ async def aguardar_e_executar_entradas(data):
         await verify_stop_values(USER_ID, BROKERAGE_ID)
         return
 
-    if resultado in ["LOSS", "GALE 1"]:
-        if not gale1 or not gale1_enabled:
-            print("❌ GALE 1 não habilitada. Finalizando como LOSS.")
-            loss = amount
-            ordem["pnl"] = loss
-            await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
-            await verify_stop_values(USER_ID, BROKERAGE_ID)
-            return
+    if resultado == "LOSS" or (resultado == "GALE 1" and not gale1_enabled):
+        print("❌ GALE 1 não habilitada. Principal marcada como LOSS.")
+        loss = amount
+        ordem["pnl"] = loss
+        await update_loss_value(USER_ID, amount, BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        return
 
-        # GALE 1
-        etapa_em_andamento = "gale1"
-        await aguardar_horario(gale1, "Gale 1")
-        ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "Gale 1")
-        if not ordem:
-            print("❌ Falha ao executar GALE 1. Abortando operação.")
-            return
-        resultado = await aguardar_resultado_ou_gale("gale1")
+    etapa_em_andamento = "gale1"
+    await aguardar_horario(gale1, "gale 1")
+    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 2, "gale1")
+    if not ordem: return
+    resultado = await aguardar_resultado_ou_gale("gale1")
 
-        if resultado == "WIN":
-            await calcular_pnl(ordem, isDemo)
-            await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-            await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 1", ordem["pnl"])
-            await verify_stop_values(USER_ID, BROKERAGE_ID)
-            return
+    if resultado == "WIN":
+        await calcular_pnl(ordem, isDemo)
+        await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 1", ordem["pnl"])
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        return
 
-        if resultado in ["LOSS", "GALE 2"]:
-            if not gale2 or not gale2_enabled:
-                print("❌ GALE 2 não habilitada. Finalizando GALE 1 como LOSS.")
-                loss = amount * 2
-                ordem["pnl"] = loss
-                await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
-                return
+    if resultado == "LOSS" or (resultado == "GALE 2" and not gale2_enabled):
+        print("❌ GALE 2 não habilitada. GALE 1 marcada como LOSS.")
+        loss = amount * 2
+        ordem["pnl"] = loss
+        await update_loss_value(USER_ID, amount * 2, BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+        await verify_stop_values(USER_ID, BROKERAGE_ID)
+        return
 
-            # GALE 2
-            etapa_em_andamento = "gale2"
-            await aguardar_horario(gale2, "Gale 2")
-            ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "Gale 2")
-            if not ordem:
-                print("❌ Falha ao executar GALE 2. Abortando.")
-                return
-            resultado = await aguardar_resultado_ou_gale("gale2")
+    etapa_em_andamento = "gale2"
+    await aguardar_horario(gale2, "gale 2")
+    ordem = await tentar_ordem(isDemo, close_type, direction, symbol, amount * 4, "gale2")
+    if not ordem: return
+    resultado = await aguardar_resultado_ou_gale("gale2")
 
-            if resultado == "WIN":
-                await calcular_pnl(ordem, isDemo)
-                await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 2", ordem["pnl"])
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
-            else:
-                print("❌ Resultado final: LOSS na GALE 2.")
-                loss = amount * 4
-                ordem["pnl"] = loss
-                await update_loss_value(USER_ID, loss, BROKERAGE_ID)
-                await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
-                await verify_stop_values(USER_ID, BROKERAGE_ID)
+    if resultado == "WIN":
+        await calcular_pnl(ordem, isDemo)
+        await update_win_value(USER_ID, ordem["pnl"], BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "WON NA GALE 2", ordem["pnl"])
+    else:
+        print("❌ Resultado final: LOSS na GALE 2.")
+        loss = amount * 4
+        ordem["pnl"] = loss
+        await update_loss_value(USER_ID, amount * 4, BROKERAGE_ID)
+        await update_trade_order_info(ordem["id"], USER_ID, "LOST", loss)
+
+    await verify_stop_values(USER_ID, BROKERAGE_ID)
 
 
 async def main():
