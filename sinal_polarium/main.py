@@ -82,7 +82,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("📤 Publicando sinal de entrada:", signal)
         await send_to_queue(signal)
 
-    # 🎯 Caso 2: Resultado WIN
+    # 🎯 Caso 2: Sinal de GALE 1
+    elif "FAZER GALE 1" in text.upper():
+        gale_payload = {
+            "type": "gale",
+            "step": 1
+        }
+        print("📤 Publicando GALE 1:", gale_payload)
+        await send_to_queue(gale_payload)
+
+    # 🎯 Caso 3: Sinal de GALE 2
+    elif "FAZER GALE 2" in text.upper():
+        gale_payload = {
+            "type": "gale",
+            "step": 2
+        }
+        print("📤 Publicando GALE 2:", gale_payload)
+        await send_to_queue(gale_payload)
+
+    # 🎯 Caso 4: Resultado WIN
     elif "GAIN" in text.upper() and "MARTINGALE" not in text.upper():
         result_payload = {
             "type": "result",
@@ -91,7 +109,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("📤 Publicando resultado WIN:", result_payload)
         await send_to_queue(result_payload)
 
-    # 🎯 Caso 3: Resultado LOSS
+    # 🎯 Caso 5: Resultado LOSS
     elif "LOSS" in text.upper():
         result_payload = {
             "type": "result",
