@@ -34,21 +34,20 @@ sinais_recebidos = asyncio.Queue()
 etapas_execucao = {}
 
 
-async def limpar_sdk_cache():
-    url = "http://avalon_api:3001/api/sdk/stop"
-    headers = {"Content-Type": "application/json"}
-    payload = {"email": BROKERAGE_USERNAME}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(url, json=payload, headers=headers) as response:
-                if response.status == 200:
-                    print("♻️ SDK removido do cache com sucesso.")
-    except Exception as e:
-        print(f"❌ Erro ao limpar cache SDK: {e}")
+# async def limpar_sdk_cache():
+#     url = "http://avalon_api:3001/api/sdk/stop"
+#     headers = {"Content-Type": "application/json"}
+#     payload = {"email": BROKERAGE_USERNAME}
+#     try:
+#         async with aiohttp.ClientSession() as session:
+#             async with session.delete(url, json=payload, headers=headers) as response:
+#                 if response.status == 200:
+#                     print("♻️ SDK removido do cache com sucesso.")
+#     except Exception as e:
+#         print(f"❌ Erro ao limpar cache SDK: {e}")
 
 
 async def consultar_balance(isDemo: bool):
-    await limpar_sdk_cache()
     url = "http://avalon_api:3001/api/account/balance"
     headers = {"Content-Type": "application/json"}
     payload = {"email": BROKERAGE_USERNAME, "password": BROKERAGE_PASSWORD}
