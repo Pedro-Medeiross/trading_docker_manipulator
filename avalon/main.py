@@ -177,6 +177,7 @@ async def calcular_pnl(ordem, isDemo):
 
     if balance_after < balance_before:
         print("❌ Saldo caiu mesmo com resultado WIN. Corrigindo para LOSS.")
+        resultado_global = "LOSS"  # <- Reclassifica o resultado para lógica futura
         loss = ordem.get("amount", 0)
         ordem["pnl"] = loss
         await update_loss_value(USER_ID, loss, BROKERAGE_ID)
