@@ -32,6 +32,7 @@ resultado_global = None
 etapa_em_andamento = None
 sinais_recebidos = asyncio.Queue()
 etapas_execucao = {}
+lock = asyncio.Lock()
 
 
 # async def limpar_sdk_cache():
@@ -176,7 +177,7 @@ async def calcular_pnl(ordem, isDemo):
             await update_loss_value(USER_ID, loss, BROKERAGE_ID)
             await update_trade_order_info(ordem["id"], USER_ID, "LOST (saldo caiu com WIN)", loss)
             await verify_stop_values(USER_ID, BROKERAGE_ID)
-            return -loss
+            return loss
 
     # Após 5 tentativas sem alteração no saldo
     print("⚠️ Saldo permaneceu igual após 5 tentativas. Reclassificando como LOSS.")
@@ -201,7 +202,14 @@ async def aguardar_resultado_ou_gale(etapa):
     while True:
         data = await sinais_recebidos.get()
         tipo = data.get("type")
-        resultado = f"GALE {data['step']}" if tipo == "gale" else data.get("result")
+
+        if tipo == "result":
+            resultado = data.get("result")
+        elif tipo == "gale":
+            resultado = f"GALE {data.get('step')}"
+        else:
+            continue
+
         if resultado in sinais_validos[etapa]:
             resultado_global = resultado
             print(f"📥 Resultado aceito para etapa {etapa.upper()}: {resultado}")
@@ -223,7 +231,12 @@ async def aguardar_horario(horario, etapa):
 
 
 async def aguardar_e_executar_entradas(data):
-    global etapa_em_andamento
+    global etapa_em_andamento, resultado_global
+
+    # 🔁 Limpa estados anteriores
+    etapa_em_andamento = None
+    resultado_global = None
+
     symbol = data["symbol"]
     direction = data["direction"]
     close_type = data["expiration"]
@@ -312,6 +325,15 @@ async def aguardar_e_executar_entradas(data):
 
     await verify_stop_values(USER_ID, BROKERAGE_ID)
 
+    # 🔁 Limpa variáveis globais após finalização da entrada
+    resultado_global = None
+    etapa_em_andamento = None
+
+
+async def processar_entrada(data):
+    async with lock:
+        await aguardar_e_executar_entradas(data)
+
 
 async def main():
     print("🔌 Conectando ao RabbitMQ...")
@@ -325,32 +347,29 @@ async def main():
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             async with message.process():
-                try:
-                    data = json.loads(message.body.decode())
-                    tipo = data.get("type")
-                    if tipo == "entry":
-                        timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
-                        print("📨 NOVO SINAL RECEBIDO")
-                        print("──────────────────────────────────────────────")
-                        print(f"🕒 Horário: {timestamp}")
-                        print(f"📈 Ativo: {data.get('symbol')}")
-                        print(f"🎯 Direção: {data.get('direction')} | Expiração: {data.get('expiration')}")
-                        print(
-                            f"📍 Entrada: {data.get('entry_time')} | GALE 1: {data.get('gale1')} | GALE 2: {data.get('gale2')}")
-                        print("──────────────────────────────────────────────")
-                        asyncio.create_task(aguardar_e_executar_entradas(data))
+                data = json.loads(message.body.decode())
+                tipo = data.get("type")
 
-                    elif tipo in ["result", "gale"]:
-                        timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
-                        print("📩 MENSAGEM DE RESULTADO RECEBIDA")
-                        print("──────────────────────────────────────────────")
-                        print(f"🕒 Horário: {timestamp}")
-                        print(f"📦 Tipo: {tipo.upper()} | Conteúdo: {json.dumps(data, ensure_ascii=False)}")
-                        print("──────────────────────────────────────────────")
-                        await sinais_recebidos.put(data)
+                if tipo == "entry":
+                    timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
+                    print("📨 NOVO SINAL RECEBIDO")
+                    print("──────────────────────────────────────────────")
+                    print(f"🕒 Horário: {timestamp}")
+                    print(f"📈 Ativo: {data.get('symbol')}")
+                    print(f"🎯 Direção: {data.get('direction')} | Expiração: {data.get('expiration')}")
+                    print(
+                        f"📍 Entrada: {data.get('entry_time')} | GALE 1: {data.get('gale1')} | GALE 2: {data.get('gale2')}")
+                    print("──────────────────────────────────────────────")
+                    asyncio.create_task(processar_entrada(data))
 
-                except Exception as e:
-                    print(f"❌ Erro ao processar mensagem: {e}")
+                elif tipo in ["result", "gale"]:
+                    timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
+                    print("📩 MENSAGEM DE RESULTADO RECEBIDA")
+                    print("──────────────────────────────────────────────")
+                    print(f"🕒 Horário: {timestamp}")
+                    print(f"📦 Tipo: {tipo.upper()} | Conteúdo: {json.dumps(data, ensure_ascii=False)}")
+                    print("──────────────────────────────────────────────")
+                    await sinais_recebidos.put(data)
 
 if __name__ == "__main__":
     asyncio.run(main())
