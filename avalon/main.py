@@ -132,6 +132,7 @@ async def tentar_ordem(isDemo, close_type, direction, symbol, amount, etapa):
 
 
 async def calcular_pnl(ordem, isDemo):
+    global resultado_global
     balance_before = ordem["balance_before"]
     timeout = 50
     elapsed = 0
