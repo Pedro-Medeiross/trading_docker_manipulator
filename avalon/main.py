@@ -193,8 +193,8 @@ async def calcular_pnl(ordem, isDemo):
 async def aguardar_resultado_ou_gale(etapa):
     global resultado_global
     sinais_validos = {
-        "entry": ["WIN", "LOSS", "GALE 1"],
-        "gale1": ["WIN", "LOSS", "GALE 2"],
+        "entry": ["WIN", "GALE 1"],
+        "gale1": ["WIN", "GALE 2"],
         "gale2": ["WIN", "LOSS"]
     }
     print(f"⏳ Aguardando resultado da etapa {etapa.upper()}...")
@@ -329,15 +329,28 @@ async def main():
                     data = json.loads(message.body.decode())
                     tipo = data.get("type")
                     if tipo == "entry":
-                        print("📨 Novo sinal de entrada recebido")
-                        print(data)
+                        timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
+                        print("📨 NOVO SINAL RECEBIDO")
+                        print("──────────────────────────────────────────────")
+                        print(f"🕒 Horário: {timestamp}")
+                        print(f"📈 Ativo: {data.get('symbol')}")
+                        print(f"🎯 Direção: {data.get('direction')} | Expiração: {data.get('expiration')}")
+                        print(
+                            f"📍 Entrada: {data.get('entry_time')} | GALE 1: {data.get('gale1')} | GALE 2: {data.get('gale2')}")
+                        print("──────────────────────────────────────────────")
                         asyncio.create_task(aguardar_e_executar_entradas(data))
+
                     elif tipo in ["result", "gale"]:
+                        timestamp = datetime.now(pytz.timezone("America/Sao_Paulo")).isoformat()
+                        print("📩 MENSAGEM DE RESULTADO RECEBIDA")
+                        print("──────────────────────────────────────────────")
+                        print(f"🕒 Horário: {timestamp}")
+                        print(f"📦 Tipo: {tipo.upper()} | Conteúdo: {json.dumps(data, ensure_ascii=False)}")
+                        print("──────────────────────────────────────────────")
                         await sinais_recebidos.put(data)
-                        print(data)
+
                 except Exception as e:
                     print(f"❌ Erro ao processar mensagem: {e}")
-
 
 if __name__ == "__main__":
     asyncio.run(main())
