@@ -74,4 +74,5 @@ volumes:
 
 networks:
   botnet:
-    driver: bridge
+    name: botnet
+    external: true
