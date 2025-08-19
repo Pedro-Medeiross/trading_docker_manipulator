@@ -15,9 +15,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-
     exchange = await channel.declare_exchange("polarium_signals", aio_pika.ExchangeType.FANOUT)
-
     await exchange.publish(
         aio_pika.Message(
             body=json.dumps(data).encode(),
@@ -25,7 +23,6 @@ async def send_to_queue(data):
         ),
         routing_key=""
     )
-
     await connection.close()
 
 def _normalize_symbol(sym: str | None) -> str | None:
@@ -45,11 +42,9 @@ def _parse_entry(text: str):
     if not re.search(r"(?i)\bNOVA\s+ENTRADA\b", text):
         return None
 
-    # Par
     par_match = re.search(r"(?i)par\s*:\s*([A-Z/]{6,12})", text)
     symbol = _normalize_symbol(par_match.group(1)) if par_match else None
 
-    # Timeframe (min)
     tf_match = re.search(r"(?i)time\s*frame\s*:\s*(\d+)|timeframe\s*:\s*(\d+)", text)
     timeframe = None
     if tf_match:
@@ -57,7 +52,6 @@ def _parse_entry(text: str):
         if tf_groups:
             timeframe = int(tf_groups[0])
 
-    # Direção
     dir_match = re.search(r"(?i)dire[cç][aã]o\s*:\s*(BUY|SELL)", text)
     direction = dir_match.group(1).upper() if dir_match else None
 
@@ -72,7 +66,7 @@ def _parse_entry(text: str):
         "type": "entry",
         "symbol": symbol,
         "timeframe_minutes": timeframe,
-        "expiration": expiration,  # compat: alguns consumidores podem esperar
+        "expiration": expiration,  # compat
         "direction": direction,
     }
 
@@ -98,14 +92,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"🧑‍💬 De: {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
     print(f"📝 Texto: {text}")
 
-    # Entrada imediata
     entry_payload = _parse_entry(text)
     if entry_payload:
         print("📤 Publicando ENTRADA:", entry_payload)
         await send_to_queue(entry_payload)
         return
 
-    # Resultado
     result_payload = _parse_result(text)
     if result_payload:
         print("📤 Publicando RESULTADO:", result_payload)
@@ -116,13 +108,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    # Grupos, supergrupos e canais (onde sinais normalmente chegam)
     app.add_handler(
         MessageHandler(
-            filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNELS),
+            filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.CHANNEL),
             handle_message
         )
     )
+    # Opcional: aceitar no privado também
+    # app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, handle_message))
+
     print("🤖 Bot iniciado e aguardando mensagens...")
     app.run_polling()
 

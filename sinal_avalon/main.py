@@ -15,9 +15,7 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-
     exchange = await channel.declare_exchange("avalon_signals", aio_pika.ExchangeType.FANOUT)
-
     await exchange.publish(
         aio_pika.Message(
             body=json.dumps(data).encode(),
@@ -25,7 +23,6 @@ async def send_to_queue(data):
         ),
         routing_key=""
     )
-
     await connection.close()
 
 def _normalize_symbol(sym: str | None) -> str | None:
@@ -35,31 +32,17 @@ def _normalize_symbol(sym: str | None) -> str | None:
     return sym.replace("/", "")
 
 def _parse_entry(text: str):
-    """
-    Formato esperado:
-    🚀 NOVA ENTRADA
-    • Par: EURUSD
-    • Timeframe: 1
-    • Direção: BUY
-    """
     if not re.search(r"\bNOVA\s+ENTRADA\b", text, re.IGNORECASE):
         return None
-
     par_match = re.search(r"(?i)par\s*:\s*([A-Z/]{6,10})", text)
     symbol = _normalize_symbol(par_match.group(1)) if par_match else None
-
     tf_match = re.search(r"(?i)timeframe\s*:\s*(\d+)", text)
     timeframe = int(tf_match.group(1)) if tf_match else None
-
     dir_match = re.search(r"(?i)dire[cç][aã]o\s*:\s*(BUY|SELL)", text, re.IGNORECASE)
     direction = dir_match.group(1).upper() if dir_match else None
-
     if not symbol or not timeframe or direction not in ("BUY", "SELL"):
         return None
-
-    # expiration só para compatibilidade com consumidor antigo
     expiration = f"0{timeframe}:00" if timeframe < 10 else f"{timeframe}:00"
-
     return {
         "type": "entry",
         "symbol": symbol,
@@ -69,11 +52,6 @@ def _parse_entry(text: str):
     }
 
 def _parse_result(text: str):
-    """
-    Formato esperado:
-    ✅ RESULTADO: WIN
-    ❌ RESULTADO: LOSS
-    """
     m = re.search(r"(?i)\bRESULTADO\s*:\s*(WIN|LOSS)\b", text)
     if not m:
         return None
@@ -82,9 +60,7 @@ def _parse_result(text: str):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-
     text = update.message.text.strip()
-
     print("\n📥 Mensagem recebida:")
     print(f"🧑‍💬 {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
     print(f"📝 {text}")
@@ -107,10 +83,12 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(
         MessageHandler(
-            filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNELS),
+            filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.CHANNEL),
             handle_message
         )
     )
+    # Se quiser aceitar no privado também, descomente:
+    # app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, handle_message))
     print("🤖 Bot iniciado e aguardando mensagens...")
     app.run_polling()
 
