@@ -29,22 +29,25 @@ def _normalize_symbol(sym: str | None) -> str | None:
     if not sym:
         return None
     sym = sym.strip().upper()
+    # remove "/" mas preserva hífen (ex.: EURUSD-OTC)
     return sym.replace("/", "")
 
 def _parse_entry(text: str):
     """
     Formato esperado:
     🚀 NOVA ENTRADA
-    • Par: EURUSD
+    • Par: EURUSD  ou EURUSD-OTC
     • Timeframe: 1
     • Direção: BUY
     """
     if not re.search(r"(?i)\bNOVA\s+ENTRADA\b", text):
         return None
 
-    par_match = re.search(r"(?i)par\s*:\s*([A-Z/]{6,12})", text)
+    # Par: aceita letras, "/", "-" e tamanhos maiores para suportar "-OTC"
+    par_match = re.search(r"(?i)par\s*:\s*([A-Z/\-]{6,20})", text)
     symbol = _normalize_symbol(par_match.group(1)) if par_match else None
 
+    # Timeframe: suporta "time frame" ou "timeframe"
     tf_match = re.search(r"(?i)time\s*frame\s*:\s*(\d+)|timeframe\s*:\s*(\d+)", text)
     timeframe = None
     if tf_match:
@@ -52,6 +55,7 @@ def _parse_entry(text: str):
         if tf_groups:
             timeframe = int(tf_groups[0])
 
+    # Direção
     dir_match = re.search(r"(?i)dire[cç][aã]o\s*:\s*(BUY|SELL)", text)
     direction = dir_match.group(1).upper() if dir_match else None
 
@@ -60,13 +64,14 @@ def _parse_entry(text: str):
     if timeframe not in (1, 5):
         return None
 
+    # Compat com consumidores antigos (não usada pelo executor novo)
     expiration = f"0{timeframe}:00" if timeframe < 10 else f"{timeframe}:00"
 
     return {
         "type": "entry",
-        "symbol": symbol,
-        "timeframe_minutes": timeframe,
-        "expiration": expiration,  # compat
+        "symbol": symbol,                 # ex.: EURUSD-OTC
+        "timeframe_minutes": timeframe,   # 1 ou 5
+        "expiration": expiration,
         "direction": direction,
     }
 
