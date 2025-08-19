@@ -42,15 +42,61 @@ print(f'home_brk: from={FROM_CHAT_HOME_BROKER} to={TO_CHAT_HOME_BROKER}')
 print(f'forward_all: {FORWARD_ALL}')
 
 # ---------------- Filtros de conteúdo ----------------
-_re_entry = re.compile(r"(?is)\bNOVA\s+ENTRADA\b.*?\bPar\s*:\s*([A-Z/]{6,12}).*?\bTimeframe\s*:\s*(1|5)\b.*?\bDire[cç][aã]o\s*:\s*(BUY|SELL)\b")
+# Aceita pares com -, ex.: EURUSD-OTC, e timeframe em vários formatos (1, 5, M1, 1m, 1 min)
+_re_entry = re.compile(
+    r"(?is)\bNOVA\s+ENTRADA\b"
+    r".*?\bPar\s*:\s*([A-Z/\-]{6,20})"
+    r".*?\bTime\s*frame\b|\bTimeframe\b",  # placeholder (será validado abaixo)
+)
+
+# Vamos validar timeframe/direção em funções separadas para logs melhores
+_re_symbol = re.compile(r"(?is)\bPar\s*:\s*([A-Z/\-]{6,20})")
+_re_timeframe = re.compile(
+    r"(?is)\b(?:Time\s*frame|Timeframe)\s*:\s*(?:M?\s*([15])|([15])\s*m(?:in)?\b|([15])\b)"
+)
+_re_direction = re.compile(r"(?is)\bDire[cç][aã]o\s*:\s*(BUY|SELL)\b")
+
 _re_result = re.compile(r"(?is)\bRESULTADO\s*:\s*(WIN|LOSS)\b")
 
-def is_relevant_text(text: str) -> bool:
+def is_relevant_text(text: str) -> tuple[bool, str]:
+    """Retorna (ok, motivo_ou_vazio)."""
     if FORWARD_ALL:
-        return True
+        return True, ""
     if not text:
-        return False
-    return bool(_re_entry.search(text) or _re_result.search(text))
+        return False, "texto vazio"
+
+    if not re.search(r"(?is)\bNOVA\s+ENTRADA\b", text) and not _re_result.search(text):
+        return False, "não contém NOVA ENTRADA nem RESULTADO"
+
+    # Se for resultado, já aceitamos
+    if _re_result.search(text):
+        return True, ""
+
+    # Verificação granular para ENTRADA
+    sm = _re_symbol.search(text)
+    if not sm:
+        return False, "sem Par:"
+    symbol = sm.group(1).upper().replace("/", "")
+
+    tfm = _re_timeframe.search(text)
+    if not tfm:
+        return False, "sem Timeframe válido"
+    tf_digit = tfm.group(1) or tfm.group(2) or tfm.group(3)
+    try:
+        timeframe = int(tf_digit)
+    except Exception:
+        return False, "timeframe não numérico"
+    if timeframe not in (1, 5):
+        return False, f"timeframe fora de 1/5: {timeframe}"
+
+    dm = _re_direction.search(text)
+    if not dm:
+        return False, "sem Direção"
+    direction = dm.group(1).upper()
+    if direction not in ("BUY", "SELL"):
+        return False, f"direção inválida: {direction}"
+
+    return True, ""
 
 # ---------------- Client ----------------
 client = TelegramClient('user_session', API_ID, API_HASH)
@@ -60,15 +106,19 @@ async def _forward_if_relevant(event, dest_name: str, dest_chat: int):
     text = getattr(msg_obj, "message", None)
 
     if not FORWARD_ALL:
-        if not text or not is_relevant_text(text):
-            print(f"ℹ️ [{dest_name}] Ignorado (não bate com os formatos novos).")
+        ok, reason = is_relevant_text(text or "")
+        if not ok:
+            print(f"ℹ️ [{dest_name}] Ignorado: {reason}.")
+            # log de depuração do conteúdo recebido
+            if text:
+                preview = text[:140].replace("\n", " ")
+                print(f"   Conteúdo (preview): {preview}...")
             return
 
     try:
-        print(f"📥 [{dest_name}] Mensagem recebida de {event.chat_id}")
-        # Encaminha preservando conteúdo original (markup, mídia, etc.)
+        print(f"📥 [{dest_name}] Mensagem recebida de chat_id={event.chat_id}")
         await client.forward_messages(dest_chat, msg_obj)
-        print(f"📤 [{dest_name}] Mensagem encaminhada com sucesso.")
+        print(f"📤 [{dest_name}] Mensagem encaminhada com sucesso -> {dest_chat}.")
     except Exception as e:
         print(f"❌ [{dest_name}] Erro ao encaminhar: {e}")
 
