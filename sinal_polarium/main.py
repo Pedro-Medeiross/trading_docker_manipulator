@@ -37,8 +37,8 @@ def _parse_entry(text: str):
     Formato esperado:
     🚀 NOVA ENTRADA
     • Par: EURUSD  ou EURUSD-OTC
-    • Timeframe: 1
-    • Direção: BUY
+    • Timeframe: 1 | 5 | M1 | M5 | 1m | 5m
+    • Direção: BUY | SELL
     """
     if not re.search(r"(?i)\bNOVA\s+ENTRADA\b", text):
         return None
@@ -47,15 +47,19 @@ def _parse_entry(text: str):
     par_match = re.search(r"(?i)par\s*:\s*([A-Z/\-]{6,20})", text)
     symbol = _normalize_symbol(par_match.group(1)) if par_match else None
 
-    # Timeframe: suporta "time frame" ou "timeframe"
-    tf_match = re.search(r"(?i)time\s*frame\s*:\s*(\d+)|timeframe\s*:\s*(\d+)", text)
+    # Timeframe: "time frame" ou "timeframe", permite 1, 5, M1, M5, 1m, 5m
+    tf_match = re.search(
+        r"(?i)(?:time\s*frame|timeframe)\s*:\s*(M?\s*([15])|([15])\s*m?)",
+        text
+    )
     timeframe = None
     if tf_match:
-        tf_groups = [g for g in tf_match.groups() if g]
-        if tf_groups:
-            timeframe = int(tf_groups[0])
+        # captura o dígito 1 ou 5 em algum dos grupos
+        tf_digit = tf_match.group(2) or tf_match.group(3)
+        if tf_digit:
+            timeframe = int(tf_digit)
 
-    # Direção
+    # Direção (permite variações de acento)
     dir_match = re.search(r"(?i)dire[cç][aã]o\s*:\s*(BUY|SELL)", text)
     direction = dir_match.group(1).upper() if dir_match else None
 
@@ -87,14 +91,19 @@ def _parse_result(text: str):
     return {"type": "result", "result": m.group(1).upper()}
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        print("⚠️ Mensagem ignorada: não é texto ou está vazia.")
+    # Usa effective_message para funcionar em grupos, privados e canais
+    msg = update.effective_message
+    if not msg or not msg.text:
+        print("⚠️ Mensagem ignorada: sem texto ou tipo não suportado.")
         return
 
-    text = update.message.text.strip()
+    text = msg.text.strip()
 
     print("\n📥 Mensagem recebida:")
-    print(f"🧑‍💬 De: {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
+    chat = update.effective_chat
+    user = msg.from_user
+    print(f"🏷️ Chat: {chat.id if chat else 'n/a'} ({chat.type if chat else 'n/a'})")
+    print(f"🧑‍💬 De: {user.full_name if user else 'desconhecido'} (ID: {user.id if user else 'n/a'})")
     print(f"📝 Texto: {text}")
 
     entry_payload = _parse_entry(text)
@@ -113,6 +122,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
+    # Handler único para texto em grupos e canais; effective_message lida com channel_post
     app.add_handler(
         MessageHandler(
             filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.CHANNEL),
