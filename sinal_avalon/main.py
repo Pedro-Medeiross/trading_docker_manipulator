@@ -28,103 +28,89 @@ async def send_to_queue(data):
 
     await connection.close()
 
+def _normalize_symbol(sym: str | None) -> str | None:
+    if not sym:
+        return None
+    sym = sym.strip().upper()
+    return sym.replace("/", "")
+
+def _parse_entry(text: str):
+    """
+    Formato esperado:
+    🚀 NOVA ENTRADA
+    • Par: EURUSD
+    • Timeframe: 1
+    • Direção: BUY
+    """
+    if not re.search(r"\bNOVA\s+ENTRADA\b", text, re.IGNORECASE):
+        return None
+
+    par_match = re.search(r"(?i)par\s*:\s*([A-Z/]{6,10})", text)
+    symbol = _normalize_symbol(par_match.group(1)) if par_match else None
+
+    tf_match = re.search(r"(?i)timeframe\s*:\s*(\d+)", text)
+    timeframe = int(tf_match.group(1)) if tf_match else None
+
+    dir_match = re.search(r"(?i)dire[cç][aã]o\s*:\s*(BUY|SELL)", text, re.IGNORECASE)
+    direction = dir_match.group(1).upper() if dir_match else None
+
+    if not symbol or not timeframe or direction not in ("BUY", "SELL"):
+        return None
+
+    # expiration só para compatibilidade com consumidor antigo
+    expiration = f"0{timeframe}:00" if timeframe < 10 else f"{timeframe}:00"
+
+    return {
+        "type": "entry",
+        "symbol": symbol,
+        "timeframe_minutes": timeframe,
+        "expiration": expiration,
+        "direction": direction,
+    }
+
+def _parse_result(text: str):
+    """
+    Formato esperado:
+    ✅ RESULTADO: WIN
+    ❌ RESULTADO: LOSS
+    """
+    m = re.search(r"(?i)\bRESULTADO\s*:\s*(WIN|LOSS)\b", text)
+    if not m:
+        return None
+    return {"type": "result", "result": m.group(1).upper()}
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
-        print("⚠️ Mensagem ignorada: não é texto ou está vazia.")
         return
 
     text = update.message.text.strip()
 
     print("\n📥 Mensagem recebida:")
-    print(f"🧑‍💬 De: {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
-    print(f"📝 Texto: {text}")
+    print(f"🧑‍💬 {update.message.from_user.full_name} (ID: {update.message.from_user.id})")
+    print(f"📝 {text}")
 
-    # 🎯 Caso 1: Entrada confirmada
-    if "✅ENTRADA CONFIRMADA✅" in text:
-        ativo_match = re.search(r"Ativo:\s*(.+)", text)
-        expiracao_match = re.search(r"Expiração:\s*M(\d+)", text)
-        direcao_match = re.search(r"Direção:\s*(.+)", text)
-        entrada_match = re.search(r"Entrada:\s*(\d{2}:\d{2})", text)
-        gales_match = re.findall(r"(\d)º GALE: TERMINA EM: (\d{2}:\d{2})", text)
+    entry_payload = _parse_entry(text)
+    if entry_payload:
+        print("📤 Publicando ENTRADA:", entry_payload)
+        await send_to_queue(entry_payload)
+        return
 
-        ativo = ativo_match.group(1).strip() if ativo_match else None
-        if ativo and '/' in ativo:
-            ativo = ''.join(ativo.split('/'))
-
-        expiracao = f"0{expiracao_match.group(1)}:00" if expiracao_match else None
-        entrada = entrada_match.group(1).strip() if entrada_match else None
-
-        direcao_raw = direcao_match.group(1).strip().lower() if direcao_match else None
-        if "compra" in direcao_raw:
-            direcao = "BUY"
-        elif "venda" in direcao_raw:
-            direcao = "SELL"
-        else:
-            direcao = None
-
-        gale1 = gale2 = None
-        for g in gales_match:
-            if g[0] == '1':
-                gale1 = g[1]
-            elif g[0] == '2':
-                gale2 = g[1]
-
-        signal = {
-            "type": "entry",
-            "symbol": ativo,
-            "expiration": expiracao,
-            "entry_time": entrada,
-            "direction": direcao,
-            "gale1": gale1,
-            "gale2": gale2
-        }
-
-        print("📤 Publicando sinal de entrada:", signal)
-        await send_to_queue(signal)
-
-    # 🎯 Caso 2: Sinal de GALE 1
-    elif "FAZER GALE 1" in text.upper():
-        gale_payload = {
-            "type": "gale",
-            "step": 1
-        }
-        print("📤 Publicando GALE 1:", gale_payload)
-        await send_to_queue(gale_payload)
-
-    # 🎯 Caso 3: Sinal de GALE 2
-    elif "FAZER GALE 2" in text.upper():
-        gale_payload = {
-            "type": "gale",
-            "step": 2
-        }
-        print("📤 Publicando GALE 2:", gale_payload)
-        await send_to_queue(gale_payload)
-
-    # 🎯 Caso 4: Resultado WIN
-    elif "GAIN" in text.upper() and "MARTINGALE" not in text.upper():
-        result_payload = {
-            "type": "result",
-            "result": "WIN"
-        }
-        print("📤 Publicando resultado WIN:", result_payload)
+    result_payload = _parse_result(text)
+    if result_payload:
+        print("📤 Publicando RESULTADO:", result_payload)
         await send_to_queue(result_payload)
+        return
 
-    # 🎯 Caso 5: Resultado LOSS
-    elif "LOSS" in text.upper():
-        result_payload = {
-            "type": "result",
-            "result": "LOSS"
-        }
-        print("📤 Publicando resultado LOSS:", result_payload)
-        await send_to_queue(result_payload)
-
-    # 🎯 Ignorar GAIN Martingale
-    elif re.search(r"GAIN Martingale \d", text, re.IGNORECASE):
-        print("⚠️ Ignorado: Resultado GAIN com Martingale não será publicado.")
+    print("ℹ️ Mensagem ignorada: formato não reconhecido.")
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.GROUPS, handle_message))
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNELS),
+            handle_message
+        )
+    )
     print("🤖 Bot iniciado e aguardando mensagens...")
     app.run_polling()
 
