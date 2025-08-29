@@ -1,4 +1,4 @@
-# publisher.py
+# publisher_home_broker.py
 import os
 import re
 import json
@@ -13,11 +13,11 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN_TELEGRAM")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 
+
 async def send_to_queue(data):
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     channel = await connection.channel()
-
-    exchange = await channel.declare_exchange("xofre_signals", aio_pika.ExchangeType.FANOUT)
+    exchange = await channel.declare_exchange("home_broker_signals", aio_pika.ExchangeType.FANOUT)
 
     await exchange.publish(
         aio_pika.Message(
@@ -26,7 +26,6 @@ async def send_to_queue(data):
         ),
         routing_key=""
     )
-
     await connection.close()
 
 
@@ -44,23 +43,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         expiracao_match = re.search(r"Expiração:\s*(.+)", text)
         entrada_match = re.search(r"Entrada:\s*(\d{2}:\d{2})", text)
         direcao_match = re.search(r"Direção:\s*[\S]+\s+([A-Z]+)", text)
-        gales_match = re.findall(r"\dº GALE: TERMINA EM: (\d{2}:\d{2})", text)
 
         ativo = ativo_match.group(1).strip() if ativo_match else None
         if ativo and '/' in ativo:
-            partes = ativo.split('/')
-            ativo = ''.join(partes)
+            ativo = ''.join(ativo.split('/'))
 
         expiracao = expiracao_match.group(1).strip() if expiracao_match else None
         entrada = entrada_match.group(1).strip() if entrada_match else None
         direcao = direcao_match.group(1).strip() if direcao_match else None
-        gale1 = gales_match[0] if len(gales_match) > 0 else None
-        gale2 = gales_match[1] if len(gales_match) > 1 else None
 
+        # Converte Expiração para minutos
         if expiracao == "M1":
-            expiracao = "01:00"
+            timeframe = 1
         elif expiracao == "M5":
-            expiracao = "05:00"
+            timeframe = 5
+        else:
+            timeframe = 1  # default
 
         if direcao == "COMPRA":
             direcao = "BUY"
@@ -68,13 +66,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             direcao = "SELL"
 
         signal = {
-            "type": "signal_confirmed",
+            "type": "entry",
             "symbol": ativo,
-            "expiration": expiracao,
-            "entry_time": entrada,
+            "timeframe_minutes": timeframe,
             "direction": direcao,
-            "gale1": gale1,
-            "gale2": gale2
+            "entry_time": entrada  # pode ser usado no consumer home_broker
         }
 
         print("📤 Publicando sinal (confirmado):", signal)
@@ -89,7 +85,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         direcao_match = re.search(r"Direção:\s*([A-Z]+)", text)
 
         ativo = par_match.group(1).strip() if par_match else None
-        timeframe = timeframe_match.group(1).strip() if timeframe_match else None
+        if ativo and '/' in ativo:
+            ativo = ''.join(ativo.split('/'))
+
+        timeframe = int(timeframe_match.group(1).strip()) if timeframe_match else 1
         direcao = direcao_match.group(1).strip() if direcao_match else None
 
         if direcao == "COMPRA":
@@ -98,9 +97,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             direcao = "SELL"
 
         signal = {
-            "type": "signal_new",
+            "type": "entry",
             "symbol": ativo,
-            "timeframe": timeframe,
+            "timeframe_minutes": timeframe,
             "direction": direcao
         }
 
@@ -128,6 +127,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.ALL & filters.ChatType.GROUPS, handle_message))
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()

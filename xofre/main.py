@@ -85,7 +85,16 @@ async def tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amoun
         print("❌ Falha ao enviar ordem mesmo após inversão.")
         return None
 
-    await create_trade_order_info(user_id=USER_ID, order_id=order["id"], symbol=symbol, order_type=direction, quantity=amount, price=order.get("openPrice"), status=order.get("result"), brokerage_id=BROKERAGE_ID)
+    await create_trade_order_info(
+        user_id=USER_ID,
+        order_id=order["id"],
+        symbol=symbol,
+        order_type=direction,
+        quantity=amount,
+        price=order.get("openPrice"),
+        status=order.get("result"),
+        brokerage_id=BROKERAGE_ID
+    )
 
     url_status = f"https://broker-api.mybroker.dev/token/trades/{order['id']}"
     headers = {"api-token": API_TOKEN}
@@ -124,8 +133,8 @@ async def aguardar_horario(horario: str, etapa: str):
 
 async def aguardar_e_executar_entradas(data):
     entrada = data["entry_time"]
-    gale1 = data["gale1"]
-    gale2 = data["gale2"]
+    gale1 = data.get("gale1")
+    gale2 = data.get("gale2")
     close_type = data["expiration"]
     direction = data["direction"]
     symbol = data["symbol"]
@@ -135,6 +144,7 @@ async def aguardar_e_executar_entradas(data):
     isDemo = bot_options['is_demo']
     gale_one = bot_options['gale_one']
     gale_two = bot_options['gale_two']
+    is_auto = bot_options.get('is_auto')  # 👈 pega o novo campo
 
     await aguardar_horario(entrada, "Entrada Principal")
     order = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, amount, "Entrada Principal")
@@ -151,45 +161,48 @@ async def aguardar_e_executar_entradas(data):
         await update_trade_order_info(order_id=order["id"], user_id=USER_ID, status="WON", pnl=pnl)
         await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
         return
-        await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-        return
 
     await update_loss_value(user_id=USER_ID, loss_value=amount, brokerage_id=BROKERAGE_ID)
     await update_trade_order_info(order_id=order["id"], user_id=USER_ID, status="LOST", pnl=pnl)
     await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
 
-    if (result in ["LOST", "DRAW"]) and gale1 and gale_one:
-        await aguardar_horario(gale1, "Gale 1")
-        gale1_valor = amount * 2
-        order_g1 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
+    # 🔥 Só executa gales se estiver no modo automático
+    if is_auto:
+        if (result in ["LOST", "DRAW"]) and gale1 and gale_one:
+            await aguardar_horario(gale1, "Gale 1")
+            gale1_valor = amount * 2
+            order_g1 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale1_valor, "Gale 1")
 
-        if order_g1 and order_g1.get("result") == "WON":
-            await update_win_value(user_id=USER_ID, win_value=order_g1["pnl"], brokerage_id=BROKERAGE_ID)
-            await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="WON NA GALE 1", pnl=pnl)
+            if order_g1 and order_g1.get("result") == "WON":
+                await update_win_value(user_id=USER_ID, win_value=order_g1["pnl"], brokerage_id=BROKERAGE_ID)
+                await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="WON NA GALE 1", pnl=pnl)
+                await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+                return
+
+            await update_loss_value(user_id=USER_ID, loss_value=gale1_valor, brokerage_id=BROKERAGE_ID)
+            await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="LOST", pnl=pnl)
             await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
-            return
 
-        await update_loss_value(user_id=USER_ID, loss_value=gale1_valor, brokerage_id=BROKERAGE_ID)
-        await update_trade_order_info(order_id=order_g1["id"], user_id=USER_ID, status="LOST", pnl=pnl)
-        await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+            if (order_g1 and order_g1.get("result") in ["LOST", "DRAW"]) and gale2 and gale_two:
+                await aguardar_horario(gale2, "Gale 2")
+                gale2_valor = amount * 4
+                order_g2 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
 
-        if (order_g1 and order_g1.get("result") in ["LOST", "DRAW"]) and gale2 and gale_two:
-            await aguardar_horario(gale2, "Gale 2")
-            gale2_valor = amount * 4
-            order_g2 = await tentar_ordem_com_inversao(isDemo, close_type, direction, symbol, gale2_valor, "Gale 2")
-
-            if order_g2 and order_g2.get("result") == "WON":
-                await update_win_value(user_id=USER_ID, win_value=order_g2["pnl"], brokerage_id=BROKERAGE_ID)
-                await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="WON NA GALE 2", pnl=pnl)
-            else:
-                await update_loss_value(user_id=USER_ID, loss_value=gale2_valor, brokerage_id=BROKERAGE_ID)
-                await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="LOST", pnl=pnl)
-            await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+                if order_g2 and order_g2.get("result") == "WON":
+                    await update_win_value(user_id=USER_ID, win_value=order_g2["pnl"], brokerage_id=BROKERAGE_ID)
+                    await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="WON NA GALE 2", pnl=pnl)
+                else:
+                    await update_loss_value(user_id=USER_ID, loss_value=gale2_valor, brokerage_id=BROKERAGE_ID)
+                    await update_trade_order_info(order_id=order_g2["id"], user_id=USER_ID, status="LOST", pnl=pnl)
+                await verify_stop_values(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
+    else:
+        print("📌 Modo manual: não executando gales.")
 
 
 # RabbitMQ fanout consumer
 async def main():
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
+    
     channel = await connection.channel()
     exchange = await channel.declare_exchange("xofre_signals", aio_pika.ExchangeType.FANOUT)
     queue = await channel.declare_queue(exclusive=True)

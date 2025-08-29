@@ -54,6 +54,19 @@ services:
     networks:
       - botnet
 
+  publisher_home_broker:
+    build:
+      context: .
+      dockerfile: Dockerfile.publisher.homebroker
+    container_name: telegram_publisher_homebroker
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - TOKEN_TELEGRAM=${TOKEN_TELEGRAM_HOMEBROKER}
+    depends_on:
+      - rabbitmq
+    networks:
+      - botnet
+
   message_replicator:
     build:
       context: .

@@ -192,12 +192,14 @@ async def enviar_ordem_imediata(data):
     bot_options = await get_bot_options(user_id=USER_ID, brokerage_id=BROKERAGE_ID)
     amount = float(bot_options["entry_price"])
     isDemo = bool(bot_options["is_demo"])
+    is_auto = bool(bot_options.get("is_auto", False))
 
     print("🚀 ENTRADA IMEDIATA (POLARIUM)")
     print("──────────────────────────────────────────────")
     print(f"📈 Ativo: {symbol}")
     print(f"🎯 Direção: {direction} | Timeframe: {timeframe} min")
     print(f"💰 Valor: {amount} | Conta: {'DEMO' if isDemo else 'REAL'}")
+    print(f"⚙️ Modo: {'AUTO' if is_auto else 'MANUAL'} (sem gales)")
     print("──────────────────────────────────────────────")
 
     trade_id = str(uuid.uuid4())
