@@ -58,6 +58,11 @@ BROKERAGE_CONFIGS = {
         "dockerfile": "./Dockerfile.avalon",
         "build_path": ".",
     },
+    4: {
+        "image": "new_bot:latest",
+        "dockerfile": "./Dockerfile.homebroker",
+        "build_path": ".",
+    }
 }
 
 # Pré-build de todas as imagens no startup
@@ -120,6 +125,12 @@ async def start_container(
         'API_PASS': os.environ.get("API_PASS"),
         'TOKEN_TELEGRAM': os.environ.get("TOKEN_TELEGRAM"),
     }
+
+    # Passa HB_LOGIN_APP e HB_PASSWORD_APP apenas se corretora for 4
+    if brokerage_id == 4:
+        env_vars['HB_LOGIN_APP'] = os.environ.get('HB_LOGIN_APP')
+        env_vars['HB_PASSWORD_APP'] = os.environ.get('HB_PASSWORD_APP')
+        print("✅ HB_LOGIN_APP e HB_PASSWORD_APP adicionados ao container")
 
     if usa_api_key:
         get_api_key = await api.get_api_key(user_id, brokerage_id)

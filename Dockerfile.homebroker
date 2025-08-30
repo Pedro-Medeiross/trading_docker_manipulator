@@ -1,0 +1,8 @@
+FROM python:3.13.3-bullseye
+
+COPY home_broker /app/home_broker
+WORKDIR /app/home_broker
+
+RUN pip install -r requirements.txt
+
+CMD ["python", "-u", "main.py"]
